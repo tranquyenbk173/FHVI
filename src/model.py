@@ -1,11 +1,13 @@
 from typing import List, Optional, Tuple
 
 import pandas as pd
+import numpy as np
 import pytorch_lightning as pl
 import torch
 import torch.nn.functional as F
 from peft import LoraConfig, get_peft_model
 from torch.optim import SGD, Adam, AdamW
+from .utils import SVGD, RBF
 from torch.optim.lr_scheduler import LambdaLR
 from torchmetrics import MetricCollection
 from torchmetrics.classification.accuracy import Accuracy
@@ -15,7 +17,7 @@ from transformers.optimization import get_cosine_schedule_with_warmup
 
 from src.loss import SoftTargetCrossEntropy
 from src.mixup import Mixup
-from utils import block_expansion
+from .utils import block_expansion
 
 MODEL_DICT = {
     "vit-b16-224-in21k": "google/vit-base-patch16-224-in21k",
@@ -63,6 +65,7 @@ class ClassificationModel(pl.LightningModule):
         lora_dropout: float = 0.0,
         lora_bias: str = "none",
         from_scratch: bool = False,
+        num_particles: int = 10,
     ):
         """Classification Model
 
@@ -92,6 +95,7 @@ class ClassificationModel(pl.LightningModule):
             from_scratch: Initialize network with random weights instead of a pretrained checkpoint
         """
         super().__init__()
+        self.automatic_optimization = False
         self.save_hyperparameters()
         self.model_name = model_name
         self.optimizer = optimizer
@@ -115,6 +119,7 @@ class ClassificationModel(pl.LightningModule):
         self.lora_dropout = lora_dropout
         self.lora_bias = lora_bias
         self.from_scratch = from_scratch
+        self.num_particles =  num_particles
 
         # Initialize network
         try:
@@ -160,6 +165,7 @@ class ClassificationModel(pl.LightningModule):
                 if "classifier" not in name:
                     param.requires_grad = False
         elif self.training_mode == "lora":
+            
             # Wrap in LoRA model
             config = LoraConfig(
                 r=self.lora_r,
@@ -169,7 +175,12 @@ class ClassificationModel(pl.LightningModule):
                 bias=self.lora_bias,
                 modules_to_save=["classifier"],
             )
-            self.net = get_peft_model(self.net, config)
+            if self.optimizer != "svgd":
+                self.net = get_peft_model(self.net, config)
+            else: #init multiple net @@ corresponding to different particles
+                self.netlist = [get_peft_model(self.net, config) for j in range(self.num_particles)]
+                    
+                    
         elif self.training_mode == "block":
             
             config = AutoConfig.from_pretrained(model_path)
@@ -253,9 +264,54 @@ class ClassificationModel(pl.LightningModule):
         )
 
         self.test_metric_outputs = []
+        
+        self.automatic_optimization = False
 
     def forward(self, x):
-        return self.net(pixel_values=x).logits
+        if self.optimizer != "svgd":
+            return self.net(pixel_values=x).logits
+        else:
+            return [self.netlist[j](pixel_values=x).logits for j in range(self.num_particles)]
+        
+    def get_learnable_block(self, net_id): #for LoRA
+        if self.optimizer == "svgd":
+            q_A = torch.empty(0).cuda()
+            q_B = torch.empty(0).cuda()
+            v_A = torch.empty(0).cuda()
+            v_B = torch.empty(0).cuda()
+            for n, p in self.net_list[net_id].named_parameters():
+                if p.requires_grad:
+                    if "query" in n:
+                        if "lora_A" in n:
+                            p_ = p.view(1, 1, -1)
+                            q_A = torch.cat((q_A, p_.cuda()), dim=0)
+                        elif "lora_B" in n:
+                            p_ = p.view(1, 1, -1)
+                            q_B = torch.cat((q_B, p_.cuda()), dim=0)
+                    elif "value" in n:
+                        if "lora_A" in n:
+                            p_ = p.view(1, 1, -1)
+                            v_A = torch.cat((v_A, p_.cuda()), dim=0)
+                        elif "lora_B" in n:
+                            p_ = p.view(1, 1, -1)
+                            v_B = torch.cat((v_B, p_.cuda()), dim=0)
+        else:
+            print('This function is just for SVGD option')
+            
+        return q_A, q_B, v_A, v_B
+    
+    def get_learnable_block_allP(self):
+        q_A = torch.empty(0).cuda()
+        q_B = torch.empty(0).cuda()
+        v_A = torch.empty(0).cuda()
+        v_B = torch.empty(0).cuda()
+        for j in range(self.num_particles):
+            q_Aj, q_Bj, v_Aj, v_Bj = self.get_learnable_block(j)
+            q_A = torch.cat((q_A, q_Aj.cuda()), dim=1)
+            q_B = torch.cat((q_B, q_Bj.cuda()), dim=1)
+            v_A = torch.cat((v_A, v_Aj.cuda()), dim=1)
+            v_B = torch.cat((v_B, v_Bj.cuda()), dim=1)
+            print(q_A.shape, v_A.shape)
 
     def shared_step(self, batch, mode="train"):
         x, y = batch
@@ -268,10 +324,20 @@ class ClassificationModel(pl.LightningModule):
 
         # Pass through network
         pred = self(x)
-        loss = self.loss_fn(pred, y)
+        if self.optimizer != "svgd":
+            loss = self.loss_fn(pred, y)
+        else:
+            loss = 0
+            pred_ = 0
+            for j in range(self.num_particles):
+                loss += self.loss_fn(pred[j], y)
+                pred_ += pred[j]
+            
+            loss = loss/j
+            pred_ = pred_/j
 
         # Get accuracy
-        metrics = getattr(self, f"{mode}_metrics")(pred, y.argmax(1))
+        metrics = getattr(self, f"{mode}_metrics")(pred_, y.argmax(1))
 
         # Log
         self.log(f"{mode}_loss", loss, on_epoch=True)
@@ -281,12 +347,34 @@ class ClassificationModel(pl.LightningModule):
 
         if mode == "test":
             self.test_metric_outputs.append(metrics["stats"])
+            
+        # print(loss)
+        # exit()
 
         return loss
 
     def training_step(self, batch, _):
+        # print(self.automatic_optimization)
         self.log("lr", self.trainer.optimizers[0].param_groups[0]["lr"], prog_bar=True)
-        return self.shared_step(batch, "train")
+        
+        
+        
+        opt = self.optimizers()
+        scheduler = self.lr_schedulers()
+        opt.zero_grad()
+        loss = self.shared_step(batch, "train")
+        self.manual_backward(loss)
+        
+        # print('fasdfasdfa')
+        # def closure():
+        #     loss = self.compute_loss(batch)
+        #     optimizer.zero_grad()
+        #     self.manual_backward(loss)
+        #     return loss
+        # print(opt.step)
+        opt.step_()
+        opt.zero_grad()
+        scheduler.step()
 
     def validation_step(self, batch, _):
         return self.shared_step(batch, "val")
@@ -335,6 +423,15 @@ class ClassificationModel(pl.LightningModule):
                 momentum=self.momentum,
                 weight_decay=self.weight_decay,
             )
+        elif self.optimizer == "svgd":  #use Adam as the base optimizer by default @@ 
+            trainable_params = [
+                param for j in range(self.num_particles)
+                for name, param in self.netlist[j].named_parameters()
+                if param.requires_grad and ("query" in name or "value" in name)
+            ]
+            
+            optimizer =  SVGD(params = trainable_params, lr=self.lr, betas=self.betas,
+                weight_decay=self.weight_decay, model_list=self.netlist)
         else:
             raise ValueError(
                 f"{self.optimizer} is not an available optimizer. Should be one of ['adam', 'adamw', 'sgd']"

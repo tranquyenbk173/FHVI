@@ -22,7 +22,7 @@ model:
   lora_alpha: 16
 data:
   dataset: cifar100
-  root: data/
+  root: ../Z.Data
   size: 224
   batch_size: 128
   workers: 4
