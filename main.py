@@ -42,9 +42,6 @@ cli = MyLightningCLI(
     trainer_defaults={"check_val_every_n_epoch": None},
 )
 
-# print(cli)
-
-# exit()
 # Copy the config into the experiment directory
 # Fix for https://github.com/Lightning-AI/lightning/issues/17168
 try:

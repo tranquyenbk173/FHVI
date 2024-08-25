@@ -4,6 +4,7 @@ import pandas as pd
 import torch
 import torch.autograd as autograd
 import torch.optim as optim
+from scipy.spatial.distance import pdist, squareform
 
 def block_expansion(ckpt, split, original_layers):
 
@@ -43,12 +44,12 @@ class RBF(torch.nn.Module):
 
     self.sigma = sigma
 
-  def forward(self, X, Y):
-    XX = X.matmul(X.t())
-    XY = X.matmul(Y.t())
-    YY = Y.matmul(Y.t())
+  def forward(self, X): # X.shape = [n_particle, n_dim_of_theta]
 
-    dnorm2 = -2 * XY + XX.diag().unsqueeze(1) + YY.diag().unsqueeze(0)
+    distances = torch.cdist(X, X, p=2)
+    # print(X.shape)
+    # print('d', distances.shape, distances)
+    dnorm2 = distances ** 2
 
     # Apply the median heuristic (PyTorch does not give true median)
     if self.sigma is None:
@@ -61,8 +62,8 @@ class RBF(torch.nn.Module):
     gamma = 1.0 / (1e-8 + 2 * sigma ** 2)
     K_XY = (-gamma * dnorm2).exp()
     
-    # print('k shape', K_XY.shape)
-
+    # print(K_XY.shape, K_XY)
+    
     return K_XY
   
 # # Let us initialize a reusable instance right away.
@@ -70,13 +71,14 @@ class RBF(torch.nn.Module):
 
 
 class SVGD(torch.optim.Adam):
-    def __init__(self, params, lr, betas, weight_decay, model_list):
+    def __init__(self, params, lr, betas, weight_decay, model_list, train_module):
         super(SVGD, self).__init__(params, lr, betas, weight_decay)
         self.netlist = model_list
         self.K = RBF()
         self.X = params
         self.num_particles = len(model_list)
         self.lr = lr
+        self.train_module = train_module
         # self.based_optim = torch.optim.Adam(
         #         params,
         #         lr=lr,
@@ -134,8 +136,10 @@ class SVGD(torch.optim.Adam):
                     if "query" in n:
                         if "lora_A" in n:
                             p_ = p.grad.data.view(1, 1, -1)
+                            # print('A', p_)
                             q_A = torch.cat((q_A, p_.cuda()), dim=0)
                         elif "lora_B" in n:
+                            # print('B', p_)
                             p_ = p.grad.data.view(1, 1, -1)
                             q_B = torch.cat((q_B, p_.cuda()), dim=0)
                     elif "value" in n:
@@ -145,6 +149,11 @@ class SVGD(torch.optim.Adam):
                         elif "lora_B" in n:
                             p_ = p.grad.data.view(1, 1, -1)
                             v_B = torch.cat((v_B, p_.cuda()), dim=0)
+                            
+        # print('q_A_grad', q_A)
+        # print('q_A_grad', q_B)
+        # print('q_A_grad', v_A)
+        # print('q_A_grad', v_B)
             
         return q_A, q_B, v_A, v_B
     
@@ -161,51 +170,103 @@ class SVGD(torch.optim.Adam):
             v_B = torch.cat((v_B, v_Bj.cuda()), dim=1)
             
         return q_A, q_B, v_A, v_B
+    
 
-    def kernel_func(self):
-        q_A, q_B, v_A, v_B = self.get_learnable_block_allP()
+    def svgd_kernel(self, theta, h = -1):
         
-        kernel_func = 0
-        for i in range(12):
-            kernel_func += self.K(q_A[i], q_A[i])
-            kernel_func += self.K(q_B[i], q_B[i])
-            kernel_func += self.K(v_A[i], v_A[i])
-            kernel_func += self.K(v_B[i], v_B[i])
+        
+        if h < 0: # if h < 0, using median trick
+            h = np.median(pairwise_dists)  
+            h = np.sqrt(0.5 * h / np.log(self.theta.shape[0]+1))
+
+        # compute the rbf kernel
+        
+        Kxy = np.exp( -pairwise_dists / h**2 / 2)
+
+        dxkxy = -np.matmul(Kxy, self.theta)
+        sumkxy = np.sum(Kxy, axis=1)
+        for i in range(self.theta.shape[1]):
+            dxkxy[:, i] = dxkxy[:,i] + np.multiply(self.theta[:,i],sumkxy)
+        dxkxy = dxkxy / (h**2)
+        return (Kxy, dxkxy)
+    
+    
+    def kernel_func(self, q_A, q_B, v_A, v_B):
+
+        q_A.requires_grad = True
+        q_B.requires_grad = True
+        v_A.requires_grad = True
+        v_B.requires_grad = True
+        
+        kernel_qA = self.K(q_A)
+        self.train_module.manual_backward(kernel_qA.sum())
+        q_A_grad = q_A.grad
+        # print('theta.grad', q_A.grad)
+        # exit()
+        
+        kernel_qB = self.K(q_B)
+        self.train_module.manual_backward(kernel_qB.sum())
+        q_B_grad = q_B.grad
+        
+        kernel_vA = self.K(v_A)
+        self.train_module.manual_backward(kernel_vA.sum())
+        v_A_grad = v_A.grad
+        
+        kernel_vB = self.K(v_B)
+        self.train_module.manual_backward(kernel_vB.sum())
+        v_B_grad = v_B.grad
             
-        # print(kernel_func.shape, kernel_func)
-        return kernel_func
+        return kernel_qA, kernel_qB, kernel_vA, kernel_vB, q_A_grad, q_B_grad, v_A_grad, v_B_grad
         
 
     def score_func(self):
         q_A_grad, q_B_grad, v_A_grad, v_B_grad = self.get_grad_allP() #dlog_prob(X)
 
         self.zero_grad()
-        K_XX = self.kernel_func() #self.K(self.X, self.X.detach())
-        K_XX.sum().backward()
-        q_A_gradK, q_B_gradK, v_A_gradK, v_B_gradK = self.get_grad_allP() #dK
+        q_A, q_B, v_A, v_B = self.get_learnable_block_allP()
+        # q_A.data += torch.rand(q_A.shape).cuda()
+        q_A, q_B, v_A, v_B = q_A.clone().detach().requires_grad_(True), q_B.clone().detach().requires_grad_(True), v_A.clone().detach().requires_grad_(True), v_B.clone().detach().requires_grad_(True)
+        kernel_qA, kernel_qB, kernel_vA, kernel_vB, q_A_gradK, q_B_gradK, v_A_gradK, v_B_gradK = self.kernel_func(q_A, q_B, v_A, v_B) #self.K(self.X, self.X.detach())
+        
+        # print(q_A_gradK.shape, q_A_grad.shape, kernel_qA.shape, kernel_qA.detach().matmul(q_A_grad).shape)
+        grad_qA = (-kernel_qA.detach().matmul(q_A_grad) + q_A_gradK) / self.num_particles
+        grad_qB = (-kernel_qB.detach().matmul(q_B_grad) + q_B_gradK) / self.num_particles
+        grad_vA = (-kernel_vA.detach().matmul(v_A_grad) + v_A_gradK) / self.num_particles
+        grad_vB = (-kernel_vB.detach().matmul(v_B_grad) + v_B_gradK) / self.num_particles
+        
+        # print("q_A_grad", q_A_grad)
+        # print("kernel_qA", kernel_qA)
+        # print("q_A_gradK", q_A_gradK)
+        # print("grad_qA", grad_qA)
+                
+        # exit()
 
-        def phi(grad_logP, grad_K):
-            return (K_XX.detach().matmul(grad_logP) + grad_K) / self.num_particles
-            
-        q_A_grad, q_B_grad, v_A_grad, v_B_grad = phi(q_A_grad, q_A_gradK), phi(q_B_grad, q_B_gradK), phi(v_A_grad, v_A_gradK), phi(v_B_grad, v_B_gradK)
-
-        return -q_A_grad, -q_B_grad, -v_A_grad, -v_B_grad
+        return grad_qA, grad_qB, grad_vA, grad_vB
+        return q_A_grad, q_B_grad, v_A_grad, v_B_grad
 
     def step_(self):
-        # print('Zooooo')
         q_A_grad, q_B_grad, v_A_grad, v_B_grad = self.score_func()
-        
+                
         for net_id in range(self.num_particles):
-            layer_id =  0
             for n, p in self.netlist[net_id].named_parameters():
-                if p.requires_grad and str(layer_id) in n:
-                    if "query" in n:
-                        if "lora_A" in n:
-                            p = p - self.lr * q_A_grad[layer_id][net_id].view(p.shape)
-                        elif "lora_B" in n:
-                            p = p - self.lr * q_B_grad[layer_id][net_id].view(p.shape)
-                    elif "value" in n:
-                        if "lora_A" in n:
-                            p = p - self.lr * v_A_grad[layer_id][net_id].view(p.shape)
-                        elif "lora_B" in n:
-                            p = p - self.lr * v_B_grad[layer_id][net_id].view(p.shape)
+                for layer_id in range(12):
+                    if p.requires_grad and str(layer_id) in n:
+                        # print(n)
+                        if "query" in n:
+                            if "lora_A" in n:
+                                # print(type(p), type(q_A_grad), type(p.data))
+                                # exit()
+                                # print('b', p.data)
+                                p.data = p.data + self.lr * q_A_grad[layer_id][net_id].view(p.data.shape)
+                                # print(self.lr, q_A_grad[layer_id][net_id].view(p.data.shape))
+                                # print('a', p.data)
+                                # exit()
+                            elif "lora_B" in n:
+                                # print('b', p.data)
+                                p.data = p.data + self.lr * q_B_grad[layer_id][net_id].view(p.data.shape)
+                                # print('a', p.data)
+                        elif "value" in n:
+                            if "lora_A" in n:
+                                p.data = p.data + self.lr * v_A_grad[layer_id][net_id].view(p.data.shape)
+                            elif "lora_B" in n:
+                                p.data = p.data + self.lr * v_B_grad[layer_id][net_id].view(p.data.shape)

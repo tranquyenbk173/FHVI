@@ -1,5 +1,6 @@
 from typing import List, Optional, Tuple
 
+import copy
 import pandas as pd
 import numpy as np
 import pytorch_lightning as pl
@@ -95,7 +96,7 @@ class ClassificationModel(pl.LightningModule):
             from_scratch: Initialize network with random weights instead of a pretrained checkpoint
         """
         super().__init__()
-        self.automatic_optimization = False
+        # self.automatic_optimization = False
         self.save_hyperparameters()
         self.model_name = model_name
         self.optimizer = optimizer
@@ -178,7 +179,10 @@ class ClassificationModel(pl.LightningModule):
             if self.optimizer != "svgd":
                 self.net = get_peft_model(self.net, config)
             else: #init multiple net @@ corresponding to different particles
-                self.netlist = [get_peft_model(self.net, config) for j in range(self.num_particles)]
+                self.netlist = []
+                for j in range(self.num_particles):
+                    self.net = get_peft_model(self.net, config)
+                    self.netlist.append(self.net)
                     
                     
         elif self.training_mode == "block":
@@ -265,12 +269,14 @@ class ClassificationModel(pl.LightningModule):
 
         self.test_metric_outputs = []
         
-        self.automatic_optimization = False
+        if self.optimizer == 'svgd':
+            self.automatic_optimization = False
 
     def forward(self, x):
         if self.optimizer != "svgd":
             return self.net(pixel_values=x).logits
         else:
+            # return self.netlist[0](pixel_values=x).logits
             return [self.netlist[j](pixel_values=x).logits for j in range(self.num_particles)]
         
     def get_learnable_block(self, net_id): #for LoRA
@@ -311,7 +317,7 @@ class ClassificationModel(pl.LightningModule):
             q_B = torch.cat((q_B, q_Bj.cuda()), dim=1)
             v_A = torch.cat((v_A, v_Aj.cuda()), dim=1)
             v_B = torch.cat((v_B, v_Bj.cuda()), dim=1)
-            print(q_A.shape, v_A.shape)
+            # print(q_A.shape, v_A.shape)
 
     def shared_step(self, batch, mode="train"):
         x, y = batch
@@ -324,20 +330,35 @@ class ClassificationModel(pl.LightningModule):
 
         # Pass through network
         pred = self(x)
+        # print('pred', pred[0].grad_fn)
+        # print(pred[0].grad_fn, pred[1].grad_fn)
         if self.optimizer != "svgd":
             loss = self.loss_fn(pred, y)
+            # Get accuracy
+            metrics = getattr(self, f"{mode}_metrics")(pred, y.argmax(1))
         else:
             loss = 0
             pred_ = 0
+            
+            loss += self.loss_fn(pred[0], y)
+            # print(loss, loss.grad_fn)
+            # self.manual_backward(loss)
+            
+            # opt = self.optimizers()
+            # opt.get_grad(0)
+            # print('*'*50)
+            # opt.get_grad(1)
+            # exit()
             for j in range(self.num_particles):
                 loss += self.loss_fn(pred[j], y)
                 pred_ += pred[j]
             
+            j = j + 1   
             loss = loss/j
             pred_ = pred_/j
 
-        # Get accuracy
-        metrics = getattr(self, f"{mode}_metrics")(pred_, y.argmax(1))
+            # Get accuracy
+            metrics = getattr(self, f"{mode}_metrics")(pred_, y.argmax(1))
 
         # Log
         self.log(f"{mode}_loss", loss, on_epoch=True)
@@ -348,33 +369,26 @@ class ClassificationModel(pl.LightningModule):
         if mode == "test":
             self.test_metric_outputs.append(metrics["stats"])
             
-        # print(loss)
-        # exit()
-
         return loss
 
     def training_step(self, batch, _):
-        # print(self.automatic_optimization)
-        self.log("lr", self.trainer.optimizers[0].param_groups[0]["lr"], prog_bar=True)
-        
-        
-        
-        opt = self.optimizers()
-        scheduler = self.lr_schedulers()
-        opt.zero_grad()
-        loss = self.shared_step(batch, "train")
-        self.manual_backward(loss)
-        
-        # print('fasdfasdfa')
-        # def closure():
-        #     loss = self.compute_loss(batch)
-        #     optimizer.zero_grad()
-        #     self.manual_backward(loss)
-        #     return loss
-        # print(opt.step)
-        opt.step_()
-        opt.zero_grad()
-        scheduler.step()
+        if self.optimizer == 'svgd':
+            # self.netlist[0].train()
+            # self.netlist[1].train()
+            self.log("lr", self.trainer.optimizers[0].param_groups[0]["lr"], prog_bar=True)
+            opt = self.optimizers()
+            scheduler = self.lr_schedulers()
+            
+            loss = self.shared_step(batch, "train")
+            
+            self.manual_backward(loss)
+            
+            opt.step_()
+            opt.zero_grad()
+            scheduler.step()
+        else:
+            self.log("lr", self.trainer.optimizers[0].param_groups[0]["lr"], prog_bar=True)
+            return self.shared_step(batch, "train")
 
     def validation_step(self, batch, _):
         return self.shared_step(batch, "val")
@@ -431,7 +445,7 @@ class ClassificationModel(pl.LightningModule):
             ]
             
             optimizer =  SVGD(params = trainable_params, lr=self.lr, betas=self.betas,
-                weight_decay=self.weight_decay, model_list=self.netlist)
+                weight_decay=self.weight_decay, model_list=self.netlist, train_module=self)
         else:
             raise ValueError(
                 f"{self.optimizer} is not an available optimizer. Should be one of ['adam', 'adamw', 'sgd']"
