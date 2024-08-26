@@ -190,7 +190,7 @@ class ClassificationModel(pl.LightningModule):
             if self.optimizer != "svgd":
                 self.net = get_peft_model(self.net, config)
             else: #init multiple net @@ corresponding to different particles
-                self.net = LoRA_ViT(num_particles=self.num_particles, vit_model=self.net, r=4, alpha=self.lora_alpha, num_classes=self.n_classes)
+                self.net = LoRA_ViT(num_particles=self.num_particles, vit_model=self.net, r=self.lora_r, alpha=self.lora_alpha, num_classes=self.n_classes)
                 
                     
         elif self.training_mode == "block":

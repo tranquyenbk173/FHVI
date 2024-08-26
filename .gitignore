@@ -167,3 +167,5 @@ cython_debug/
 =1.0
 =1.16
 =2.4
+checkpoint/B_16_imagenet1k.pth
+checkpoint/dino_vitbase16_pretrain.pth
