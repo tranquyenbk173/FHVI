@@ -103,42 +103,42 @@ class SVGD(torch.optim.Adam):
             if p.requires_grad:
                 if "proj_q" in n:
                     if "w_a" in n:
-                        if i_qA < 2:
+                        if i_qA < self.num_particles:
                             p_ = p.data.view(1, 1, -1)
                             tq_A = torch.cat((tq_A, p_), dim=1)
                             i_qA += 1
-                            if i_qA == 2:   
+                            if i_qA == self.num_particles:   
                                 # print(q_A.shape, tq_A.shape)
                                 q_A = torch.cat((q_A, tq_A), dim=0)
                                 tq_A = torch.empty(0).cuda()
                                 i_qA = 0
                     elif "w_b" in n:
-                        if i_qB < 2:
+                        if i_qB < self.num_particles:
                             p_ = p.data.view(1, 1, -1)
                             tq_B = torch.cat((tq_B, p_), dim=1)
                             i_qB += 1
-                            if i_qB == 2:   
+                            if i_qB == self.num_particles:   
                                 # print(q_A.shape, tq_A.shape)
                                 q_B = torch.cat((q_B, tq_B), dim=0)
                                 tq_B = torch.empty(0).cuda()
                                 i_qB = 0
                 elif "proj_v" in n:
                     if "w_a" in n:
-                        if i_vA < 2:
+                        if i_vA < self.num_particles:
                             p_ = p.data.view(1, 1, -1)
                             tv_A = torch.cat((tv_A, p_), dim=1)
                             i_vA += 1
-                            if i_vA == 2:   
+                            if i_vA == self.num_particles:   
                                 # print(q_A.shape, tq_A.shape)
                                 v_A = torch.cat((v_A, tv_A), dim=0)
                                 tv_A = torch.empty(0).cuda()
                                 i_vA = 0
                     elif "w_b" in n:
-                        if i_vB < 2:
+                        if i_vB < self.num_particles:
                             p_ = p.data.view(1, 1, -1)
                             tv_B = torch.cat((tv_B, p_), dim=1)
                             i_vB += 1
-                            if i_vB == 2:   
+                            if i_vB == self.num_particles:   
                                 # print(q_A.shape, tq_A.shape)
                                 v_B = torch.cat((v_B, tv_B), dim=0)
                                 tv_B = torch.empty(0).cuda()
@@ -173,42 +173,42 @@ class SVGD(torch.optim.Adam):
             if p.requires_grad:
                 if "proj_q" in n:
                     if "w_a" in n:
-                        if i_qA < 2:
+                        if i_qA < self.num_particles:
                             p_ = p.grad.data.view(1, 1, -1)
                             tq_A = torch.cat((tq_A, p_), dim=1)
                             i_qA += 1
-                            if i_qA == 2:   
+                            if i_qA == self.num_particles:   
                                 # print(q_A.shape, tq_A.shape)
                                 q_A = torch.cat((q_A, tq_A), dim=0)
                                 tq_A = torch.empty(0).cuda()
                                 i_qA = 0
                     elif "w_b" in n:
-                        if i_qB < 2:
+                        if i_qB < self.num_particles:
                             p_ = p.grad.data.view(1, 1, -1)
                             tq_B = torch.cat((tq_B, p_), dim=1)
                             i_qB += 1
-                            if i_qB == 2:   
+                            if i_qB == self.num_particles:   
                                 # print(q_A.shape, tq_A.shape)
                                 q_B = torch.cat((q_B, tq_B), dim=0)
                                 tq_B = torch.empty(0).cuda()
                                 i_qB = 0
                 elif "proj_v" in n:
                     if "w_a" in n:
-                        if i_vA < 2:
+                        if i_vA < self.num_particles:
                             p_ = p.grad.data.view(1, 1, -1)
                             tv_A = torch.cat((tv_A, p_), dim=1)
                             i_vA += 1
-                            if i_vA == 2:   
+                            if i_vA == self.num_particles:   
                                 # print(q_A.shape, tq_A.shape)
                                 v_A = torch.cat((v_A, tv_A), dim=0)
                                 tv_A = torch.empty(0).cuda()
                                 i_vA = 0
                     elif "w_b" in n:
-                        if i_vB < 2:
+                        if i_vB < self.num_particles:
                             p_ = p.grad.data.view(1, 1, -1)
                             tv_B = torch.cat((tv_B, p_), dim=1)
                             i_vB += 1
-                            if i_vB == 2:   
+                            if i_vB == self.num_particles:   
                                 # print(q_A.shape, tq_A.shape)
                                 v_B = torch.cat((v_B, tv_B), dim=0)
                                 tv_B = torch.empty(0).cuda()
