@@ -15,10 +15,16 @@ from torchmetrics.classification.accuracy import Accuracy
 from torchmetrics.classification.stat_scores import StatScores
 from transformers import AutoConfig, AutoModelForImageClassification
 from transformers.optimization import get_cosine_schedule_with_warmup
+import timm
+from .base_vit import ViT
 
 from src.loss import SoftTargetCrossEntropy
 from src.mixup import Mixup
 from .utils import block_expansion
+from .lora import LoRA_ViT
+
+torch.autograd.set_detect_anomaly(True)
+
 
 MODEL_DICT = {
     "vit-b16-224-in21k": "google/vit-base-patch16-224-in21k",
@@ -144,6 +150,11 @@ class ClassificationModel(pl.LightningModule):
                 ignore_mismatched_sizes=True,
                 image_size=self.image_size,
             )
+            
+            if self.optimizer == 'svgd':
+                print('Model name', self.model_name)
+                self.net = ViT(name='B_16_imagenet1k', pretrained=True, num_classes=self.n_classes, image_size=self.image_size, num_particles=self.num_particles)
+                self.net = self.net.cuda()
 
         # Load checkpoint weights
         if self.weights:
@@ -179,11 +190,8 @@ class ClassificationModel(pl.LightningModule):
             if self.optimizer != "svgd":
                 self.net = get_peft_model(self.net, config)
             else: #init multiple net @@ corresponding to different particles
-                self.netlist = []
-                for j in range(self.num_particles):
-                    self.net = get_peft_model(self.net, config)
-                    self.netlist.append(self.net)
-                    
+                self.net = LoRA_ViT(num_particles=self.num_particles, vit_model=self.net, r=4, alpha=self.lora_alpha, num_classes=self.n_classes)
+                
                     
         elif self.training_mode == "block":
             
@@ -274,10 +282,10 @@ class ClassificationModel(pl.LightningModule):
 
     def forward(self, x):
         if self.optimizer != "svgd":
-            return self.net(pixel_values=x).logits
+            return self.net(x).logits
         else:
-            # return self.netlist[0](pixel_values=x).logits
-            return [self.netlist[j](pixel_values=x).logits for j in range(self.num_particles)]
+            res = self.net(x)
+            return res
         
     def get_learnable_block(self, net_id): #for LoRA
         if self.optimizer == "svgd":
@@ -317,7 +325,6 @@ class ClassificationModel(pl.LightningModule):
             q_B = torch.cat((q_B, q_Bj.cuda()), dim=1)
             v_A = torch.cat((v_A, v_Aj.cuda()), dim=1)
             v_B = torch.cat((v_B, v_Bj.cuda()), dim=1)
-            # print(q_A.shape, v_A.shape)
 
     def shared_step(self, batch, mode="train"):
         x, y = batch
@@ -330,8 +337,7 @@ class ClassificationModel(pl.LightningModule):
 
         # Pass through network
         pred = self(x)
-        # print('pred', pred[0].grad_fn)
-        # print(pred[0].grad_fn, pred[1].grad_fn)
+        
         if self.optimizer != "svgd":
             loss = self.loss_fn(pred, y)
             # Get accuracy
@@ -339,29 +345,19 @@ class ClassificationModel(pl.LightningModule):
         else:
             loss = 0
             pred_ = 0
-            
-            loss += self.loss_fn(pred[0], y)
-            # print(loss, loss.grad_fn)
-            # self.manual_backward(loss)
-            
-            # opt = self.optimizers()
-            # opt.get_grad(0)
-            # print('*'*50)
-            # opt.get_grad(1)
-            # exit()
+        
             for j in range(self.num_particles):
-                loss += self.loss_fn(pred[j], y)
-                pred_ += pred[j]
+                loss = loss + self.loss_fn(pred[j], y)
+                pred_ = pred_ + pred[j]
             
-            j = j + 1   
-            loss = loss/j
-            pred_ = pred_/j
+            loss = loss/self.num_particles
+            pred_ = pred_/self.num_particles
 
             # Get accuracy
             metrics = getattr(self, f"{mode}_metrics")(pred_, y.argmax(1))
 
         # Log
-        self.log(f"{mode}_loss", loss, on_epoch=True)
+        self.log(f"{mode}_loss", loss.item(), on_epoch=True)
         for k, v in metrics.items():
             if len(v.size()) == 0:
                 self.log(f"{mode}_{k.lower()}", v, on_epoch=True)
@@ -373,14 +369,18 @@ class ClassificationModel(pl.LightningModule):
 
     def training_step(self, batch, _):
         if self.optimizer == 'svgd':
-            # self.netlist[0].train()
-            # self.netlist[1].train()
             self.log("lr", self.trainer.optimizers[0].param_groups[0]["lr"], prog_bar=True)
             opt = self.optimizers()
             scheduler = self.lr_schedulers()
             
-            loss = self.shared_step(batch, "train")
+            torch.autograd.set_detect_anomaly(True)
+
             
+            loss = self.shared_step(batch, "train")
+            # print('loss',loss.grad_fn)
+            
+            # torch.autograd.set_detect_anomaly(True)
+            opt.zero_grad()
             self.manual_backward(loss)
             
             opt.step_()
@@ -437,15 +437,9 @@ class ClassificationModel(pl.LightningModule):
                 momentum=self.momentum,
                 weight_decay=self.weight_decay,
             )
-        elif self.optimizer == "svgd":  #use Adam as the base optimizer by default @@ 
-            trainable_params = [
-                param for j in range(self.num_particles)
-                for name, param in self.netlist[j].named_parameters()
-                if param.requires_grad and ("query" in name or "value" in name)
-            ]
-            
-            optimizer =  SVGD(params = trainable_params, lr=self.lr, betas=self.betas,
-                weight_decay=self.weight_decay, model_list=self.netlist, train_module=self)
+        elif self.optimizer == "svgd":  #use Adam as the base optimizer by default @@        
+            optimizer =  SVGD(param = self.net.parameters(), lr=self.lr, betas=self.betas,
+                weight_decay=self.weight_decay, num_particles=self.num_particles, train_module=self, net=self.net)
         else:
             raise ValueError(
                 f"{self.optimizer} is not an available optimizer. Should be one of ['adam', 'adamw', 'sgd']"
