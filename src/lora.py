@@ -16,7 +16,7 @@ from torch import Tensor
 from torch.nn.parameter import Parameter
 import copy
 
-from .base_vit import ViT, CustomLinear
+from .base_vit import ViT, CustomLinear2
 
 
 class _LoRALayer(nn.Module):
@@ -73,8 +73,8 @@ class LoRA_ViT(nn.Module):
         self.num_particles = num_particles
 
         # lets freeze first
-        for param in vit_model.parameters():
-            param.requires_grad = False
+        # for param in vit_model.parameters():
+            # param.requires_grad = False
 
         # Here, we do the surgery
         for t_layer_i, blk in enumerate(vit_model.transformer.blocks): # enumerate(vit_model.vit.encoder.layer):
@@ -120,8 +120,9 @@ class LoRA_ViT(nn.Module):
 
         self.reset_parameters()
         self.lora_vit = vit_model
-        print(self.lora_vit)
+        # print(self)
         if num_classes > 0:
+            print('Re-init weight for', self.lora_vit.fc)
             self.lora_vit.fc = CustomLinear(vit_model.fc.in_features, num_classes, num_particles=self.num_particles)
 
     def save_fc_parameters(self, filename: str) -> None:

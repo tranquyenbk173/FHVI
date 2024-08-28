@@ -16,12 +16,13 @@ from torchmetrics.classification.stat_scores import StatScores
 from transformers import AutoConfig, AutoModelForImageClassification
 from transformers.optimization import get_cosine_schedule_with_warmup
 import timm
-from .base_vit import ViT
 
 from src.loss import SoftTargetCrossEntropy
 from src.mixup import Mixup
 from .utils import block_expansion
 from .lora import LoRA_ViT
+from .base_vit2 import ViT, CustomLinear, CustomLinear2
+# from .base_vit import ViT, CustomLinear
 
 torch.autograd.set_detect_anomaly(True)
 
@@ -153,8 +154,11 @@ class ClassificationModel(pl.LightningModule):
             
             if self.optimizer == 'svgd':
                 print('Model name', self.model_name)
-                self.net = ViT(name='B_16_imagenet1k', pretrained=True, num_classes=self.n_classes, image_size=self.image_size, num_particles=self.num_particles)
+                self.net = ViT(name='B_16_imagenet1k', pretrained=True, num_classes=self.n_classes, image_size=self.image_size) #, num_particles=self.num_particles)
                 self.net = self.net.cuda()
+                
+                # print("Load done")
+                # exit()
 
         # Load checkpoint weights
         if self.weights:
@@ -169,6 +173,11 @@ class ClassificationModel(pl.LightningModule):
                     new_state_dict[k] = v
 
             self.net.load_state_dict(new_state_dict, strict=True)
+            
+            print('Load donnnnnneeee')
+            exit()
+            
+        # exit()
 
         # Prepare model depending on fine-tuning mode
         if self.training_mode == "linear":
@@ -190,7 +199,20 @@ class ClassificationModel(pl.LightningModule):
             if self.optimizer != "svgd":
                 self.net = get_peft_model(self.net, config)
             else: #init multiple net @@ corresponding to different particles
-                self.net = LoRA_ViT(num_particles=self.num_particles, vit_model=self.net, r=self.lora_r, alpha=self.lora_alpha, num_classes=self.n_classes)
+                
+                # lets freeze first
+                for param in self.net.parameters():
+                    param.requires_grad = False
+                    
+                if True:
+                    print('Re-init weight for', self.net.fc)
+                    # self.net.fc = torch.nn.Linear(768, self.n_classes) #, num_particles=self.num_particles)
+                    self.net.fc = CustomLinear2(768, self.n_classes, num_particles=self.num_particles)
+                    # print(self.net.fc.weight.requires_grad)
+                    # print(self.net.fc.bias.requires_grad)
+                    # exit()
+                # self.net = LoRA_ViT(num_particles=self.num_particles, vit_model=self.net, r=self.lora_r, alpha=self.lora_alpha, num_classes=self.n_classes)
+                # print(self.net)
                 
                     
         elif self.training_mode == "block":
@@ -343,17 +365,24 @@ class ClassificationModel(pl.LightningModule):
             # Get accuracy
             metrics = getattr(self, f"{mode}_metrics")(pred, y.argmax(1))
         else:
-            loss = 0
-            pred_ = 0
-        
+            pred_ = 0 #pred
+            # print('pred', type(pred), len(pred), pred[0].shape)
             for j in range(self.num_particles):
-                loss = loss + self.loss_fn(pred[j], y)
                 pred_ = pred_ + pred[j]
+            # 
+            pred_ = pred_/max(1, self.num_particles)
+            print('pred_', pred_.shape)
+            loss = self.loss_fn(pred_, y)
             
-            loss = loss/self.num_particles
-            pred_ = pred_/self.num_particles
+            # try:
+            #     print('pred', torch.argmax(torch.nn.functional.softmax(pred[j], dim=-1), dim=-1))
+            #     print('y', torch.argmax(y, dim=-1))
+            # except:
+            #     print('pred', torch.argmax(torch.nn.functional.softmax(pred[0], dim=-1), dim=-1))
+            #     print('y', torch.argmax(y, dim=-1))
 
             # Get accuracy
+            print(pred_.shape)
             metrics = getattr(self, f"{mode}_metrics")(pred_, y.argmax(1))
 
         # Log
