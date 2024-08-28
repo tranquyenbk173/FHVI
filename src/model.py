@@ -366,23 +366,12 @@ class ClassificationModel(pl.LightningModule):
             metrics = getattr(self, f"{mode}_metrics")(pred, y.argmax(1))
         else:
             pred_ = 0 #pred
-            # print('pred', type(pred), len(pred), pred[0].shape)
             for j in range(self.num_particles):
                 pred_ = pred_ + pred[j]
-            # 
             pred_ = pred_/max(1, self.num_particles)
-            print('pred_', pred_.shape)
             loss = self.loss_fn(pred_, y)
             
-            # try:
-            #     print('pred', torch.argmax(torch.nn.functional.softmax(pred[j], dim=-1), dim=-1))
-            #     print('y', torch.argmax(y, dim=-1))
-            # except:
-            #     print('pred', torch.argmax(torch.nn.functional.softmax(pred[0], dim=-1), dim=-1))
-            #     print('y', torch.argmax(y, dim=-1))
-
             # Get accuracy
-            print(pred_.shape)
             metrics = getattr(self, f"{mode}_metrics")(pred_, y.argmax(1))
 
         # Log
@@ -406,9 +395,7 @@ class ClassificationModel(pl.LightningModule):
 
             
             loss = self.shared_step(batch, "train")
-            # print('loss',loss.grad_fn)
             
-            # torch.autograd.set_detect_anomaly(True)
             opt.zero_grad()
             self.manual_backward(loss)
             

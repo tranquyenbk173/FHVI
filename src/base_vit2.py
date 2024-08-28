@@ -8,6 +8,7 @@ from torch.nn import functional as F
 import torch
 from torch.utils import model_zoo
 from typing import Optional
+import math
 
 
 def get_base_config():
@@ -277,29 +278,9 @@ class CustomLinear(nn.Module):
             res = torch.nn.functional.linear(x[i], self.weight, self.bias) #torch.matmul(x[i], self.weight) + self.bias
             final_res.append(res)
             
-        # print('final', len(final_res), final_res[0].shape)
         return final_res
     
-class CustomLinear2(nn.Module):
-    def __init__(self, dim_in, dim_out, num_particles):
-        super(CustomLinear2, self).__init__()
-        self.weight = nn.Parameter(torch.randn(dim_out, dim_in))
-        self.bias = nn.Parameter(torch.randn(dim_out))
-        self.num_particles = num_particles
         
-    def forward(self, x):
-        
-        # return torch.nn.functional.linear(x, self.weight, self.bias)
-        x = [x]
-        final_res = []
-        for i in range(self.num_particles):
-            res = torch.nn.functional.linear(x[i], self.weight, self.bias) #torch.matmul(x[i], self.weight) + self.bias
-            final_res.append(res)
-            
-        
-        return final_res[0]
-    
-    
 class CustomLinear2(nn.Module):
     def __init__(self, in_features, out_features, bias=True, num_particles=1):
         super(CustomLinear2, self).__init__()
@@ -311,10 +292,10 @@ class CustomLinear2(nn.Module):
         else:
             self.register_parameter('bias', None)
         self.num_particles = num_particles
-        # self.reset_parameters()
+        self.reset_parameters()
 
     def reset_parameters(self):
-        nn.init.kaiming_uniform_(self.weight, a=torch.sqrt(torch.tensor(5.0)))
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5.0))
         if self.bias is not None:
             fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
             bound = 1 / torch.sqrt(torch.tensor(fan_in, dtype=torch.float))
@@ -336,7 +317,7 @@ class CustomDropout(nn.Module):
         self.num_particles = num_particles
 
     def forward(self, x):
-        print('do', type(x), len(x), x[0].shape)
+        # print('do', type(x), len(x), x[0].shape)
         if not self.training:
             return x
         final_res = []
@@ -358,42 +339,6 @@ class SimpleDropout(nn.Module):
         return mask * x / (1 - self.dropout)
 
 
-# class MultiHeadedSelfAttention(nn.Module):
-#     """Multi-Headed Dot Product Attention"""
-
-#     def __init__(self, dim, num_heads, dropout, num_particles):
-#         super().__init__()
-#         self.proj_q = nn.Linear(dim, dim)
-#         self.proj_k = nn.Linear(dim, dim)
-#         self.proj_v = nn.Linear(dim, dim)
-#         self.drop = nn.Dropout(dropout)
-#         self.n_heads = num_heads
-#         self.scores = None  # for visualization
-
-#     def forward(self, x, mask):
-#         """
-#         x, q(query), k(key), v(value) : (B(batch_size), S(seq_len), D(dim))
-#         mask : (B(batch_size) x S(seq_len))
-#         * split D(dim) into (H(n_heads), W(width of head)) ; D = H * W
-#         """
-#         # (B, S, D) -proj-> (B, S, D) -split-> (B, S, H, W) -trans-> (B, H, S, W)
-#         print('In attention', type(x), len(x))
-#         q, k, v = self.proj_q(x), self.proj_k(x), self.proj_v(x)
-#         q, k, v = (split_last(x, (self.n_heads, -1)).transpose(1, 2)
-#                    for x in [q, k, v])
-#         # (B, H, S, W) @ (B, H, W, S) -> (B, H, S, S) -softmax-> (B, H, S, S)
-#         scores = q @ k.transpose(-2, -1) / np.sqrt(k.size(-1))
-#         if mask is not None:
-#             mask = mask[:, None, None, :].float()
-#             scores -= 10000.0 * (1.0 - mask)
-#         scores = self.drop(F.softmax(scores, dim=-1))
-#         # (B, H, S, S) @ (B, H, S, W) -> (B, H, S, W) -trans-> (B, S, H, W)
-#         h = (scores @ v).transpose(1, 2).contiguous()
-#         # -merge-> (B, S, D)
-#         h = merge_last(h, 2)
-#         self.scores = scores
-#         return h
-    
 class MultiHeadedSelfAttention(nn.Module):
     """Multi-Headed Dot Product Attention"""
 
@@ -416,7 +361,6 @@ class MultiHeadedSelfAttention(nn.Module):
         # (B, S, D) -proj-> (B, S, D) -split-> (B, S, H, W) -trans-> (B, H, S, W)
         q, k, v = self.proj_q(x), self.proj_k(x), self.proj_v(x)
         h = []
-        # print(len(x))
         for i in range(self.num_particles):
             q_i, k_i, v_i = q[i], k[i], v[i]
             q_i, k_i, v_i = (split_last(x, (self.n_heads, -1)).transpose(1, 2)
@@ -437,18 +381,6 @@ class MultiHeadedSelfAttention(nn.Module):
         return h
 
 
-# class PositionWiseFeedForward(nn.Module):
-#     """FeedForward Neural Networks for each position"""
-
-#     def __init__(self, dim, ff_dim, num_particles):
-#         super().__init__()
-#         self.fc1 = nn.Linear(dim, ff_dim)
-#         self.fc2 = nn.Linear(ff_dim, dim)
-
-#     def forward(self, x):
-#         # (B, S, D) -> (B, S, D_ff) -> (B, S, D)
-#         return self.fc2(F.gelu(self.fc1(x)))
-    
 class PositionWiseFeedForward(nn.Module):
     """FeedForward Neural Networks for each position"""
 
@@ -460,7 +392,6 @@ class PositionWiseFeedForward(nn.Module):
 
     def forward(self, x):
         # (B, S, D) -> (B, S, D_ff) -> (B, S, D)
-        # x = [x]
         res = []
         for i in range(self.num_particles):
             res_i = self.fc2(F.gelu(self.fc1(x[i])))
@@ -474,12 +405,6 @@ class Block(nn.Module):
 
     def __init__(self, dim, num_heads, ff_dim, dropout, num_particles):
         super().__init__()
-        # self.attn = MultiHeadedSelfAttention(dim, num_heads, dropout)
-        # self.proj = nn.Linear(dim, dim)
-        # self.norm1 = nn.LayerNorm(dim, eps=1e-6)
-        # self.pwff = PositionWiseFeedForward(dim, ff_dim)
-        # self.norm2 = nn.LayerNorm(dim, eps=1e-6)
-        # self.drop = nn.Dropout(dropout)
         
         self.attn = MultiHeadedSelfAttention(dim, num_heads, dropout, num_particles)
         self.proj = CustomLinear(dim, dim, num_particles).cuda()
@@ -490,22 +415,11 @@ class Block(nn.Module):
         self.num_particles = num_particles
 
     def forward(self, x, mask):
-        # print('*'*50)
-        # x = x[0]
-        # print(type(self.norm1(x)), len(self.norm1(x)), self.norm1(x)[0].shape)
-        # print(self.attn(self.norm1(x)[0], mask).shape)
         h = self.drop(self.proj(self.attn(self.norm1(x), mask)))[0]
-        # print(h.shape)
         x = x[0] + h
-        # x = x + h
-        # print(x.shape)
         x = [x]
         h = self.drop(self.pwff(self.norm2(x)))[0]
-        # h = self.drop([self.pwff(self.norm2(x)[0])])[0]
-        # print(h.shape)
         x = x[0] + h
-        # x = x + h
-        # print(x[0].shape)
         return [x]
         
 
@@ -521,13 +435,11 @@ class Transformer(nn.Module):
     def forward(self, x, mask=None):
         orginal_x =  x[0]
         x = []
-        # print('numP', self.num_particles)
         for i in range(self.num_particles):
             x.append(orginal_x.detach())
             
         for block in self.blocks:
             x = block(x, mask)
-            # x = [x]
             
         return x
 
@@ -692,25 +604,17 @@ class ViT(nn.Module):
             x = self.positional_embedding(x)  # b,gh*gw+1,d
         x = [x]
         x = self.transformer(x)  # b,gh*gw+1,d
-        # print(type(x))
-        # x = x[0]
         print('out transs')
-        # print(x.shape)
         if hasattr(self, 'pre_logits'):
             x = self.pre_logits(x)
             x = torch.tanh(x)
             print('pre_logit', x.shape)
         if hasattr(self, 'fc'):
-            # print('fc', x.shape)
             x = self.norm(x)# [:, 0]  # b,d
-            # print(x.shape)
-            # x = [x]
             res = []
-            # res = x[0][:0]
             for i in range(self.num_particles):
                 res_i = x[i][:, 0]  # b,d
                 res.append(res_i)
             x = self.fc(res)  # b,num_classes
-            print('--', type(x), len(x), x[0].shape)
 
         return x
