@@ -346,9 +346,9 @@ class MultiHeadedSelfAttention(nn.Module):
 
     def __init__(self, dim, num_heads, dropout, num_particles):
         super().__init__()
-        self.proj_q = CustomLinear2(dim, dim, num_particles)
-        self.proj_k = CustomLinear2(dim, dim, num_particles)
-        self.proj_v = CustomLinear2(dim, dim, num_particles)
+        self.proj_q = CustomLinear2(dim, dim, True, num_particles)
+        self.proj_k = CustomLinear2(dim, dim, True, num_particles)
+        self.proj_v = CustomLinear2(dim, dim, True, num_particles)
         self.drop = nn.Dropout(dropout)
         self.n_heads = num_heads
         self.scores = None  # for visualization
@@ -409,7 +409,7 @@ class Block(nn.Module):
         super().__init__()
         
         self.attn = MultiHeadedSelfAttention(dim, num_heads, dropout, num_particles)
-        self.proj = CustomLinear2(dim, dim, num_particles).cuda()
+        self.proj = CustomLinear2(dim, dim, True,  num_particles).cuda()
         self.norm1 = CustomLayerNorm(dim, num_particles, eps=1e-6)
         self.pwff = PositionWiseFeedForward(dim, ff_dim, num_particles)
         self.norm2 = CustomLayerNorm(dim, num_particles, eps=1e-6)
@@ -554,7 +554,7 @@ class ViT(nn.Module):
 
         # Classifier head
         self.norm = CustomLayerNorm(pre_logits_size, num_particles, eps=1e-6)
-        self.fc = CustomLinear2(pre_logits_size, num_classes, num_particles)
+        self.fc = CustomLinear2(pre_logits_size, num_classes, True, num_particles)
         self.num_particles = num_particles
 
         # Initialize weights
