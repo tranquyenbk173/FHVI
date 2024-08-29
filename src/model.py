@@ -201,18 +201,25 @@ class ClassificationModel(pl.LightningModule):
             else: #init multiple net @@ corresponding to different particles
                 
                 # lets freeze first
-                for param in self.net.parameters():
-                    param.requires_grad = False
+                # for param in self.net.parameters():
+                    # param.requires_grad = False
                     
-                if True:
-                    print('Re-init weight for', self.net.fc)
+                # if True:
+                    # print('Re-init weight for', self.net.fc)
                     # self.net.fc = torch.nn.Linear(768, self.n_classes) #, num_particles=self.num_particles)
-                    self.net.fc = CustomLinear2(768, self.n_classes, num_particles=self.num_particles)
+                    # self.net.fc = CustomLinear2(768, self.n_classes, num_particles=self.num_particles)
                     # print(self.net.fc.weight.requires_grad)
                     # print(self.net.fc.bias.requires_grad)
                     # exit()
-                # self.net = LoRA_ViT(num_particles=self.num_particles, vit_model=self.net, r=self.lora_r, alpha=self.lora_alpha, num_classes=self.n_classes)
+                self.net = LoRA_ViT(num_particles=self.num_particles, vit_model=self.net, r=self.lora_r, alpha=self.lora_alpha, num_classes=self.n_classes)
                 # print(self.net)
+
+                print('Trainable params')
+                for name,  param in self.net.named_parameters():
+                    if param.requires_grad == True:
+                        print(name)
+                        
+                # exit()
                 
                     
         elif self.training_mode == "block":
@@ -359,6 +366,7 @@ class ClassificationModel(pl.LightningModule):
 
         # Pass through network
         pred = self(x)
+        print(pred[0].grad_fn)
         
         if self.optimizer != "svgd":
             loss = self.loss_fn(pred, y)
@@ -400,6 +408,7 @@ class ClassificationModel(pl.LightningModule):
             self.manual_backward(loss)
             
             opt.step_()
+            # opt.step()
             opt.zero_grad()
             scheduler.step()
         else:

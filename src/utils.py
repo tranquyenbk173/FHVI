@@ -65,9 +65,6 @@ class RBF(torch.nn.Module):
         
     return K_XY
   
-# # Let us initialize a reusable instance right away.
-# K = RBF()
-
 
 class SVGD(torch.optim.Adam):
     def __init__(self, param, lr, betas, weight_decay, num_particles, train_module, net):
@@ -100,10 +97,10 @@ class SVGD(torch.optim.Adam):
         i_qB = 0
         i_vA = 0
         i_vB = 0
-        print('Get learnable params')
+        # print('Get learnable params')
         for n, p in self.net.named_parameters():
             if p.requires_grad:
-                print(n)
+                # print(n)
                 if "proj_q" in n:
                     if "w_a" in n:
                         if i_qA < self.num_particles:
@@ -147,11 +144,6 @@ class SVGD(torch.optim.Adam):
                                 tv_B = torch.empty(0).cuda()
                                 i_vB = 0
                             
-        # print('q_A_grad', q_A.shape)
-        # print('q_B_grad', q_B.shape)
-        # print('v_A_grad', v_A.shape)
-        # print('v_B_grad', v_B.shape)
-                    
         return q_A, q_B, v_A, v_B
     
     def get_learnable_block_allP(self):
@@ -217,10 +209,10 @@ class SVGD(torch.optim.Adam):
                                 tv_B = torch.empty(0).cuda()
                                 i_vB = 0
                             
-        # print('q_A_grad', q_A.shape)
-        # print('q_B_grad', q_B.shape)
-        # print('v_A_grad', v_A.shape)
-        # print('v_B_grad', v_B.shape)
+        print('q_A_grad', q_A.shape, q_A)
+        print('q_B_grad', q_B.shape, q_B)
+        print('v_A_grad', v_A.shape, v_A)
+        print('v_B_grad', v_B.shape, v_B)
                     
         return q_A, q_B, v_A, v_B
     
@@ -252,8 +244,6 @@ class SVGD(torch.optim.Adam):
         self.train_module.manual_backward(kernel_vB.sum())
         v_B_grad = v_B.grad
         
-        # print(kernel_qA.shape, q_A_grad.shape)
-            
         return kernel_qA, kernel_qB, kernel_vA, kernel_vB, q_A_grad, q_B_grad, v_A_grad, v_B_grad
         
 
@@ -266,26 +256,53 @@ class SVGD(torch.optim.Adam):
         except:
             cls_grad_w = self.net.fc.weight.grad.data
             cls_grad_b = self.net.fc.bias.grad.data
+            
+        print('gradd_cls', cls_grad_w.sum(), cls_grad_w)
         
         self.zero_grad()
         q_A, q_B, v_A, v_B = self.get_learnable_block_allP()
-        # q_A.data += torch.rand(q_A.shape).cuda()
         q_A, q_B, v_A, v_B = q_A.clone().detach().requires_grad_(True), q_B.clone().detach().requires_grad_(True), v_A.clone().detach().requires_grad_(True), v_B.clone().detach().requires_grad_(True)
-        # print(q_A.shape)
         if q_A.shape[0] > 0:
             kernel_qA, kernel_qB, kernel_vA, kernel_vB, q_A_gradK, q_B_gradK, v_A_gradK, v_B_gradK = self.kernel_func(q_A, q_B, v_A, v_B) #self.K(self.X, self.X.detach())
         else:
             kernel_qA, kernel_qB, kernel_vA, kernel_vB, q_A_gradK, q_B_gradK, v_A_gradK, v_B_gradK = torch.ones(size=(q_A_grad.shape[0], q_A_grad.shape[0])).cuda(), torch.ones(size=(q_A_grad.shape[0], q_A_grad.shape[0])).cuda(), torch.ones(size=(q_A_grad.shape[0], q_A_grad.shape[0])).cuda(), torch.ones(size=(q_A_grad.shape[0], q_A_grad.shape[0])).cuda(), 0, 0, 0, 0
         
         grad_qA = (-kernel_qA.detach().matmul(q_A_grad) + q_A_gradK) / self.num_particles
+        print(grad_qA.sum(), grad_qA + q_A_grad)
+        # print(grad_qA)
+        # print(q_A_grad)
+        
+        print("*"*50)
+        # exit()
+        
         grad_qB = (-kernel_qB.detach().matmul(q_B_grad) + q_B_gradK) / self.num_particles
+        print(grad_qB.sum(), grad_qB + q_B_grad)
+        # print(kernel_qA)
+        # print(q_A_gradK)
+        # exit()
         grad_vA = (-kernel_vA.detach().matmul(v_A_grad) + v_A_gradK) / self.num_particles
+        print(grad_vA.sum(), grad_vA + v_A_grad)
         grad_vB = (-kernel_vB.detach().matmul(v_B_grad) + v_B_gradK) / self.num_particles
+        print(grad_vB.sum(), grad_vB + v_B_grad)
+        
+        # exit()
         
         return grad_qA, grad_qB, grad_vA, grad_vB, cls_grad_w, cls_grad_b
-        return q_A_grad, q_B_grad, v_A_grad, v_B_grad
 
     def step_(self):
+        
+        
+        for n, p in self.net.named_parameters():
+            if p.requires_grad == True: 
+                print(n)
+                p.data = p.data - self.lr * p.grad.data
+                
+        
+        print('update done')
+        return
+        
+        
+        
         q_A_grad, q_B_grad, v_A_grad, v_B_grad, cls_grad_w, cls_grad_b = self.score_func()
         
         for net_id in range(self.num_particles):        
@@ -294,15 +311,18 @@ class SVGD(torch.optim.Adam):
                     if p.requires_grad and f'blocks.{str(layer_id)}' in n:
                         if "proj_q" in n:
                             if f"w_a.{net_id}" in n:
-                                # print('update')
-                                p.data = p.data + self.lr * q_A_grad[layer_id][net_id].view(p.data.shape)
+                                temp_w = p.data
+                                p.data = temp_w + self.lr *self.num_particles* q_A_grad[layer_id][net_id].view(p.data.shape)
                             elif f"w_b.{net_id}" in n:
-                                p.data = p.data + self.lr * q_B_grad[layer_id][net_id].view(p.data.shape)
+                                temp_w = p.data
+                                p.data = temp_w + self.lr *self.num_particles* q_B_grad[layer_id][net_id].view(p.data.shape)
                         elif "proj_v" in n:
                             if f"w_a.{net_id}" in n:
-                                p.data = p.data + self.lr * v_A_grad[layer_id][net_id].view(p.data.shape)
+                                temp_w = p.data
+                                p.data = temp_w + self.lr *self.num_particles* v_A_grad[layer_id][net_id].view(p.data.shape)
                             elif f"w_b.{net_id}" in n:
-                                p.data = p.data + self.lr * v_B_grad[layer_id][net_id].view(p.data.shape)
+                                temp_w = p.data
+                                p.data = temp_w + self.lr *self.num_particles* v_B_grad[layer_id][net_id].view(p.data.shape)
         
         try:                        
             temp_w = self.net.lora_vit.fc.weight.data
@@ -312,10 +332,10 @@ class SVGD(torch.optim.Adam):
             temp_b = self.net.fc.bias.data
         
         try:
-            self.net.lora_vit.fc.weight.data =  temp_w - self.lr * cls_grad_w
-            self.net.lora_vit.fc.bias.data =  temp_b - self.lr * cls_grad_b
+            self.net.lora_vit.fc.weight.data =  temp_w - self.lr/self.num_particles * cls_grad_w
+            self.net.lora_vit.fc.bias.data =  temp_b - self.lr/self.num_particles * cls_grad_b
         except:
-            self.net.fc.weight.data =  temp_w - self.lr * cls_grad_w
-            self.net.fc.bias.data =  temp_b - self.lr * cls_grad_b
+            self.net.fc.weight.data =  temp_w - self.lr/self.num_particles * cls_grad_w
+            self.net.fc.bias.data =  temp_b - self.lr/self.num_particles * cls_grad_b
                                 
         

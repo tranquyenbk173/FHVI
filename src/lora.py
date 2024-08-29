@@ -16,7 +16,7 @@ from torch import Tensor
 from torch.nn.parameter import Parameter
 import copy
 
-from .base_vit import ViT, CustomLinear2
+from .base_vit2 import ViT, CustomLinear2, CustomLinear
 
 
 class _LoRALayer(nn.Module):
@@ -35,6 +35,22 @@ class _LoRALayer(nn.Module):
             res_i = self.w[i](x[i]) + (self.alpha // self.r) * self.w_b[i](self.w_a[i](x[i]))
             res.append(res_i)
         return res
+    
+    
+class _LoRALayer_1(nn.Module):
+    def __init__(self, num_particles: int, w: nn.ModuleList, w_a: nn.ModuleList, w_b: nn.ModuleList, r: int, alpha: int):
+        super().__init__()
+        self.num_particles = num_particles
+        self.w = w
+        self.w_a = w_a
+        self.w_b = w_b
+        self.r = r
+        self.alpha = alpha
+
+    def forward(self, x):
+        x = x[0]
+        res = self.w([x])[0] + (self.alpha // self.r) * self.w_b(self.w_a(x))
+        return [res]
 
 
 class LoRA_ViT(nn.Module):
@@ -73,57 +89,63 @@ class LoRA_ViT(nn.Module):
         self.num_particles = num_particles
 
         # lets freeze first
-        # for param in vit_model.parameters():
-            # param.requires_grad = False
+        for param in vit_model.parameters():
+            param.requires_grad = False
 
-        # Here, we do the surgery
+        # # Here, we do the surgery
         for t_layer_i, blk in enumerate(vit_model.transformer.blocks): # enumerate(vit_model.vit.encoder.layer):
-            # If we only want few lora layer instead of all
+        #     # If we only want few lora layer instead of all
             if t_layer_i not in self.lora_layer:
                 continue
             w_q_linear_o = blk.attn.proj_q #blk.attention.attention.query
             w_v_linear_o = blk.attn.proj_v #blk.attention.attention.value
             
-            w_q_linear = nn.ModuleList()
-            w_v_linear = nn.ModuleList()
-            w_a_linear_q = nn.ModuleList()
-            w_b_linear_q = nn.ModuleList()
-            w_a_linear_v = nn.ModuleList()
-            w_b_linear_v = nn.ModuleList()
+            w_a_linear_q = torch.nn.Linear(dim, r, bias=False) #.append(w_a_linear_q_i)
+            w_b_linear_q = torch.nn.Linear(r, dim, bias=False)
+            w_a_linear_v = torch.nn.Linear(dim, r, bias=False)
+            w_b_linear_v = torch.nn.Linear(r, dim, bias=False)
             
-            for i in range(self.num_particles):
-                # w_qkv_linear = blk.attn.qkv
-                # self.dim = w_qkv_linear.in_features
-                w_q_linear_i = copy.deepcopy(w_q_linear_o)
-                w_v_linear_i = copy.deepcopy(w_v_linear_o)
-                w_a_linear_q_i = nn.Linear(dim, r, bias=False)
-                w_b_linear_q_i = nn.Linear(r, dim, bias=False)
-                w_a_linear_v_i = nn.Linear(dim, r, bias=False)
-                w_b_linear_v_i = nn.Linear(r, dim, bias=False)
+        #     w_q_linear = nn.ModuleList()
+        #     w_v_linear = nn.ModuleList()
+        #     w_a_linear_q = nn.ModuleList()
+        #     w_b_linear_q = nn.ModuleList()
+        #     w_a_linear_v = nn.ModuleList()
+        #     w_b_linear_v = nn.ModuleList()
+            
+        #     for i in range(self.num_particles):
+        #         w_q_linear_i = nn.Linear(w_q_linear_o.in_features, w_q_linear_o.out_features,) #copy.deepcopy(w_q_linear_o)
+        #         w_q_linear_i.weight.requires_grad_(False)
+        #         w_q_linear_i.bias.requires_grad_(False)
+        #         w_v_linear_i = nn.Linear(w_v_linear_o.in_features, w_v_linear_o.out_features,) #copy.deepcopy(w_v_linear_o)
+        #         w_v_linear_i.weight.requires_grad_(False)
+        #         w_v_linear_i.bias.requires_grad_(False)
+        #         w_a_linear_q_i = nn.Linear(dim, r, bias=False)
+        #         w_b_linear_q_i = nn.Linear(r, dim, bias=False)
+        #         w_a_linear_v_i = nn.Linear(dim, r, bias=False)
+        #         w_b_linear_v_i = nn.Linear(r, dim, bias=False)
                 
-                w_a_linear_q.append(w_a_linear_q_i)
-                w_b_linear_q.append(w_b_linear_q_i)
-                w_a_linear_v.append(w_a_linear_v_i)
-                w_b_linear_v.append(w_b_linear_v_i)
-                w_q_linear.append(w_q_linear_i)
-                w_v_linear.append(w_v_linear_i)
+        #         w_a_linear_q.append(w_a_linear_q_i)
+        #         w_b_linear_q.append(w_b_linear_q_i)
+        #         w_a_linear_v.append(w_a_linear_v_i)
+        #         w_b_linear_v.append(w_b_linear_v_i)
+        #         w_q_linear.append(w_q_linear_i)
+        #         w_v_linear.append(w_v_linear_i)
                 
-                self.w_As.append(w_a_linear_q)
-                self.w_As.append(w_a_linear_v)
-                self.w_Bs.append(w_b_linear_q)
-                self.w_Bs.append(w_b_linear_v)
-                self.w_Qs.append(w_q_linear)
-                self.w_Vs.append(w_v_linear)
+        # #         self.w_As.append(w_a_linear_q)
+        # #         self.w_As.append(w_a_linear_v)
+        # #         self.w_Bs.append(w_b_linear_q)
+        # #         self.w_Bs.append(w_b_linear_v)
+        # #         self.w_Qs.append(w_q_linear)
+        # #         self.w_Vs.append(w_v_linear)
                 
-            blk.attn.proj_q = _LoRALayer(self.num_particles, w_q_linear, w_a_linear_q, w_b_linear_q, r, alpha)
-            blk.attn.proj_v = _LoRALayer(self.num_particles, w_v_linear, w_a_linear_v, w_b_linear_v, r, alpha)
+            blk.attn.proj_q = _LoRALayer_1(self.num_particles, w_q_linear_o, w_a_linear_q, w_b_linear_q, r, alpha)
+            blk.attn.proj_v = _LoRALayer_1(self.num_particles, w_v_linear_o, w_a_linear_v, w_b_linear_v, r, alpha)
 
-        self.reset_parameters()
+        # self.reset_parameters()
         self.lora_vit = vit_model
-        # print(self)
         if num_classes > 0:
             print('Re-init weight for', self.lora_vit.fc)
-            self.lora_vit.fc = CustomLinear(vit_model.fc.in_features, num_classes, num_particles=self.num_particles)
+            self.lora_vit.fc = CustomLinear2(vit_model.fc.in_features, num_classes, num_particles=self.num_particles)
 
     def save_fc_parameters(self, filename: str) -> None:
         r"""Only safetensors is supported now.
@@ -206,7 +228,8 @@ class LoRA_ViT(nn.Module):
                 nn.init.kaiming_uniform_(w_A[i].weight, a=math.sqrt(5))
         for w_B in self.w_Bs:
             for i in range(self.num_particles):
-                nn.init.zeros_(w_B[i].weight)
+                # nn.init.zeros_(w_B[i].weight)
+                nn.init.kaiming_uniform_(w_B[i].weight, a=math.sqrt(5))
 
     def forward(self, x: Tensor) -> Tensor:
         return self.lora_vit(x)
