@@ -154,7 +154,7 @@ class ClassificationModel(pl.LightningModule):
             
             if self.optimizer == 'svgd':
                 print('Model name', self.model_name)
-                self.net = ViT(name='B_16_imagenet1k', pretrained=True, num_classes=self.n_classes, image_size=self.image_size) #, num_particles=self.num_particles)
+                self.net = ViT(name='B_16_imagenet1k', pretrained=True, num_classes=self.n_classes, image_size=self.image_size, num_particles=self.num_particles)
                 self.net = self.net.cuda()
                 
                 # print("Load done")
@@ -175,7 +175,7 @@ class ClassificationModel(pl.LightningModule):
             self.net.load_state_dict(new_state_dict, strict=True)
             
             print('Load donnnnnneeee')
-            exit()
+            # exit()
             
         # exit()
 
@@ -214,10 +214,10 @@ class ClassificationModel(pl.LightningModule):
                 self.net = LoRA_ViT(num_particles=self.num_particles, vit_model=self.net, r=self.lora_r, alpha=self.lora_alpha, num_classes=self.n_classes)
                 # print(self.net)
 
-                print('Trainable params')
-                for name,  param in self.net.named_parameters():
-                    if param.requires_grad == True:
-                        print(name)
+                # print('Trainable params')
+                # for name,  param in self.net.named_parameters():
+                #     if param.requires_grad == True:
+                #         print(name)
                         
                 # exit()
                 
@@ -366,7 +366,7 @@ class ClassificationModel(pl.LightningModule):
 
         # Pass through network
         pred = self(x)
-        print(pred[0].grad_fn)
+        # print(pred[0].grad_fn)
         
         if self.optimizer != "svgd":
             loss = self.loss_fn(pred, y)

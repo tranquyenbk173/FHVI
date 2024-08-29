@@ -361,6 +361,7 @@ class MultiHeadedSelfAttention(nn.Module):
         * split D(dim) into (H(n_heads), W(width of head)) ; D = H * W
         """
         # (B, S, D) -proj-> (B, S, D) -split-> (B, S, H, W) -trans-> (B, H, S, W)
+        # print(type(x), len(x), self.num_particles)
         q, k, v = self.proj_q(x), self.proj_k(x), self.proj_v(x)
         h = []
         for i in range(self.num_particles):
@@ -417,7 +418,19 @@ class Block(nn.Module):
         self.num_particles = num_particles
 
     def forward(self, x, mask):
-        h = self.drop(self.proj(self.attn(self.norm1(x), mask)))[0]
+        h = self.drop(self.proj(self.attn(self.norm1(x), mask))) #[0]
+        res = []
+        for i in range(self.num_particles):
+            res_i = x[i] + h[i]
+            res.append(res_i)
+        x = res
+        h = self.drop(self.pwff(self.norm2(x)))
+        res = []
+        for i in range(self.num_particles):
+            res_i = x[i] + h[i]
+            res.append(res_i)
+        x = res
+        return x
         x = x[0] + h
         x = [x]
         h = self.drop(self.pwff(self.norm2(x)))[0]
@@ -430,12 +443,13 @@ class Transformer(nn.Module):
 
     def __init__(self, num_layers, dim, num_heads, ff_dim, dropout, num_particles):
         super().__init__()
+        print('nnn', num_particles)
         self.blocks = nn.ModuleList([
             Block(dim, num_heads, ff_dim, dropout, num_particles) for _ in range(num_layers)])
         self.num_particles = num_particles
 
     def forward(self, x, mask=None):
-        orginal_x =  x[0]
+        orginal_x = x
         x = []
         for i in range(self.num_particles):
             x.append(orginal_x.detach())
@@ -490,6 +504,8 @@ class ViT(nn.Module):
         num_particles: int = 1,
     ):
         super().__init__()
+        
+        # print('num_particles', num_particles)
 
         # Configuration
         if name is None:
@@ -604,7 +620,7 @@ class ViT(nn.Module):
                 b, -1, -1), x), dim=1)  # b,gh*gw+1,d
         if hasattr(self, 'positional_embedding'):
             x = self.positional_embedding(x)  # b,gh*gw+1,d
-        x = [x]
+        # x = [x]
         x = self.transformer(x)  # b,gh*gw+1,d
         
         if hasattr(self, 'pre_logits'):
