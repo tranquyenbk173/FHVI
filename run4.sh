@@ -15,9 +15,7 @@
 #SBATCH --mail-type=fail          # send email when job fails
 #SBATCH --mail-user=v.quyentt15@vinai.io
 
-module load python/miniconda3/miniconda3   
-eval "$(conda shell.bash hook)" 
-conda activate coda
+/lustre/scratch/client/vinai/users/quyentt15/envs/anaconda3/bin/conda activate coda
 cd /home/quyentt15/quyentt15/Bayesian_finetuning/
 
 python main.py fit --config /home/ubuntu/peft-vit/configs/lora/cifar100-r16-lr-0.05_svgd_copy_3.yaml
