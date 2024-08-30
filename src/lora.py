@@ -16,7 +16,7 @@ from torch import Tensor
 from torch.nn.parameter import Parameter
 import copy
 
-from .base_vit import ViT, CustomLinear2
+from .base_vit2 import ViT, CustomLinear2, CustomLinear
 
 
 class _LoRALayer(nn.Module):
@@ -35,6 +35,58 @@ class _LoRALayer(nn.Module):
             res_i = self.w[i](x[i]) + (self.alpha // self.r) * self.w_b[i](self.w_a[i](x[i]))
             res.append(res_i)
         return res
+    
+class _LoRALayer0(nn.Module):
+    def __init__(self, num_particles: int, w: nn.Module, w_a: nn.Module, w_b: nn.Module, r: int, alpha: int):
+        super().__init__()
+        self.num_particles = num_particles
+        self.w = w
+        self.w_a = w_a
+        self.w_b = w_b
+        self.r = r
+        self.alpha = alpha
+
+    def forward(self, x):
+        wx = self.w(x)
+        wa = self.w_a(x)
+        wb = self.w_b(wa)
+        
+        final_res = []
+        for i in range(self.num_particles):
+            res = wx[i] + (self.alpha // self.r) * wb[i]
+            final_res.append(res)
+            
+        return final_res
+    
+    
+class ParticleCluster(nn.Module):
+    def __init__(self, num_particles, in_features, out_features,forA=False, bias=False):
+        super(ParticleCluster, self).__init__()
+        self.num_particles = num_particles
+        self.forA = forA
+        self.layer = torch.nn.ModuleList()
+        for i in range(self.num_particles):
+            self.layer.append(torch.nn.Linear(in_features, out_features, bias=bias))
+            
+        self.reset_parameters()
+        
+    def forward(self, x):
+        assert len(x) == self.num_particles, f"Len(x)={len(x)} must be num_particles={self.num_particles}"
+        res = []
+        for i in range(self.num_particles):
+            res_i = self.layer[i](x[i])
+            res.append(res_i)
+        return res
+            
+    def reset_parameters(self) -> None:
+        if self.forA:
+            for i in range(self.num_particles):
+                nn.init.kaiming_uniform_(self.layer[i].weight, a=math.sqrt(5))
+        else:
+            for i in range(self.num_particles):
+                nn.init.zeros_(self.layer[i].weight)
+                # nn.init.kaiming_uniform_(self.layer[i].weight, a=math.sqrt(5))
+
 
 
 class LoRA_ViT(nn.Module):
@@ -73,57 +125,30 @@ class LoRA_ViT(nn.Module):
         self.num_particles = num_particles
 
         # lets freeze first
-        # for param in vit_model.parameters():
-            # param.requires_grad = False
+        for param in vit_model.parameters():
+            param.requires_grad = False
 
-        # Here, we do the surgery
+        # # Here, we do the surgery
         for t_layer_i, blk in enumerate(vit_model.transformer.blocks): # enumerate(vit_model.vit.encoder.layer):
-            # If we only want few lora layer instead of all
+        #     # If we only want few lora layer instead of all
             if t_layer_i not in self.lora_layer:
                 continue
             w_q_linear_o = blk.attn.proj_q #blk.attention.attention.query
             w_v_linear_o = blk.attn.proj_v #blk.attention.attention.value
             
-            w_q_linear = nn.ModuleList()
-            w_v_linear = nn.ModuleList()
-            w_a_linear_q = nn.ModuleList()
-            w_b_linear_q = nn.ModuleList()
-            w_a_linear_v = nn.ModuleList()
-            w_b_linear_v = nn.ModuleList()
-            
-            for i in range(self.num_particles):
-                # w_qkv_linear = blk.attn.qkv
-                # self.dim = w_qkv_linear.in_features
-                w_q_linear_i = copy.deepcopy(w_q_linear_o)
-                w_v_linear_i = copy.deepcopy(w_v_linear_o)
-                w_a_linear_q_i = nn.Linear(dim, r, bias=False)
-                w_b_linear_q_i = nn.Linear(r, dim, bias=False)
-                w_a_linear_v_i = nn.Linear(dim, r, bias=False)
-                w_b_linear_v_i = nn.Linear(r, dim, bias=False)
-                
-                w_a_linear_q.append(w_a_linear_q_i)
-                w_b_linear_q.append(w_b_linear_q_i)
-                w_a_linear_v.append(w_a_linear_v_i)
-                w_b_linear_v.append(w_b_linear_v_i)
-                w_q_linear.append(w_q_linear_i)
-                w_v_linear.append(w_v_linear_i)
-                
-                self.w_As.append(w_a_linear_q)
-                self.w_As.append(w_a_linear_v)
-                self.w_Bs.append(w_b_linear_q)
-                self.w_Bs.append(w_b_linear_v)
-                self.w_Qs.append(w_q_linear)
-                self.w_Vs.append(w_v_linear)
-                
-            blk.attn.proj_q = _LoRALayer(self.num_particles, w_q_linear, w_a_linear_q, w_b_linear_q, r, alpha)
-            blk.attn.proj_v = _LoRALayer(self.num_particles, w_v_linear, w_a_linear_v, w_b_linear_v, r, alpha)
+            w_a_linear_q = ParticleCluster(num_particles=num_particles, in_features=dim, out_features=r, forA=True)
+            w_b_linear_q = ParticleCluster(num_particles=num_particles, in_features=r, out_features=dim)
+            w_a_linear_v = ParticleCluster(num_particles=num_particles, in_features=dim, out_features=r, forA=True)
+            w_b_linear_v = ParticleCluster(num_particles=num_particles, in_features=r, out_features=dim)
+        
+            blk.attn.proj_q = _LoRALayer0(self.num_particles, w_q_linear_o, w_a_linear_q, w_b_linear_q, r, alpha)
+            blk.attn.proj_v = _LoRALayer0(self.num_particles, w_v_linear_o, w_a_linear_v, w_b_linear_v, r, alpha)
 
-        self.reset_parameters()
         self.lora_vit = vit_model
-        # print(self)
         if num_classes > 0:
-            print('Re-init weight for', self.lora_vit.fc)
-            self.lora_vit.fc = CustomLinear(vit_model.fc.in_features, num_classes, num_particles=self.num_particles)
+            print("Re-init weight for: self.lora_vit.fc")
+            self.lora_vit.fc = ParticleCluster(num_particles=num_particles, in_features=vit_model.fc.in_features, out_features=num_classes, forA=True, bias=True)
+            # self.lora_vit.fc = CustomLinear2(vit_model.fc.in_features, num_classes, bias=True, num_particles=self.num_particles)
 
     def save_fc_parameters(self, filename: str) -> None:
         r"""Only safetensors is supported now.
@@ -206,7 +231,8 @@ class LoRA_ViT(nn.Module):
                 nn.init.kaiming_uniform_(w_A[i].weight, a=math.sqrt(5))
         for w_B in self.w_Bs:
             for i in range(self.num_particles):
-                nn.init.zeros_(w_B[i].weight)
+                # nn.init.zeros_(w_B[i].weight)
+                nn.init.kaiming_uniform_(w_B[i].weight, a=math.sqrt(5))
 
     def forward(self, x: Tensor) -> Tensor:
         return self.lora_vit(x)

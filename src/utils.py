@@ -65,9 +65,6 @@ class RBF(torch.nn.Module):
         
     return K_XY
   
-# # Let us initialize a reusable instance right away.
-# K = RBF()
-
 
 class SVGD(torch.optim.Adam):
     def __init__(self, param, lr, betas, weight_decay, num_particles, train_module, net):
@@ -92,18 +89,23 @@ class SVGD(torch.optim.Adam):
         q_B = torch.empty(0).cuda()
         v_A = torch.empty(0).cuda()
         v_B = torch.empty(0).cuda()
+        cls_w = torch.empty(0).cuda()
+        cls_b = torch.empty(0).cuda()
         tq_A = torch.empty(0).cuda()
         tq_B = torch.empty(0).cuda()
         tv_A = torch.empty(0).cuda()
         tv_B = torch.empty(0).cuda()
+        tcls_w = torch.empty(0).cuda()
+        tcls_b = torch.empty(0).cuda()
         i_qA = 0
         i_qB = 0
         i_vA = 0
         i_vB = 0
-        print('Get learnable params')
+        i_cls_w = 0
+        i_cls_b = 0
+        # print('Get learnable params')
         for n, p in self.net.named_parameters():
             if p.requires_grad:
-                print(n)
                 if "proj_q" in n:
                     if "w_a" in n:
                         if i_qA < self.num_particles:
@@ -145,33 +147,51 @@ class SVGD(torch.optim.Adam):
                                 # print(q_A.shape, tq_A.shape)
                                 v_B = torch.cat((v_B, tv_B), dim=0)
                                 tv_B = torch.empty(0).cuda()
-                                i_vB = 0
+                                i_vB = 0                 
+                elif "fc" in n:
+                    if "weight" in n:
+                        if i_cls_w < self.num_particles:
+                            p_ = p.data.view(1, 1, -1)
+                            tcls_w = torch.cat((tcls_w, p_), dim=1)
+                            i_cls_w += 1
+                            if i_cls_w == self.num_particles:   
+                                # print(q_A.shape, tq_A.shape)
+                                cls_w = torch.cat((cls_w, tcls_w), dim=0)
+                                tcls_w = torch.empty(0).cuda()
+                                i_cls_w = 0
+                    elif "bias" in n:
+                        if i_cls_b < self.num_particles:
+                            p_ = p.data.view(1, 1, -1)
+                            tcls_b = torch.cat((tcls_b, p_), dim=1)
+                            i_cls_b += 1
+                            if i_cls_b == self.num_particles:   
+                                # print(q_A.shape, tq_A.shape)
+                                cls_b = torch.cat((cls_b, tcls_b), dim=0)
+                                tcls_b = torch.empty(0).cuda()
+                                i_cls_b = 0
                             
-        # print('q_A_grad', q_A.shape)
-        # print('q_B_grad', q_B.shape)
-        # print('v_A_grad', v_A.shape)
-        # print('v_B_grad', v_B.shape)
-                    
-        return q_A, q_B, v_A, v_B
+        return q_A, q_B, v_A, v_B, cls_w, cls_b
     
-    def get_learnable_block_allP(self):
-        q_A, q_B, v_A, v_B = self.get_learnable_block()
-        return q_A, q_B, v_A, v_B
-    
-    def get_grad(self): #for LoRA
+    def get_grad1(self): #for LoRA
         
         q_A = torch.empty(0).cuda()
         q_B = torch.empty(0).cuda()
         v_A = torch.empty(0).cuda()
         v_B = torch.empty(0).cuda()
+        cls_w = torch.empty(0).cuda()
+        cls_b = torch.empty(0).cuda()
         tq_A = torch.empty(0).cuda()
         tq_B = torch.empty(0).cuda()
         tv_A = torch.empty(0).cuda()
         tv_B = torch.empty(0).cuda()
+        tcls_w = torch.empty(0).cuda()
+        tcls_b = torch.empty(0).cuda()
         i_qA = 0
         i_qB = 0
         i_vA = 0
         i_vB = 0
+        i_cls_w = 0
+        i_cls_b = 0
         for n, p in self.net.named_parameters():
             if p.requires_grad:
                 if "proj_q" in n:
@@ -181,7 +201,6 @@ class SVGD(torch.optim.Adam):
                             tq_A = torch.cat((tq_A, p_), dim=1)
                             i_qA += 1
                             if i_qA == self.num_particles:   
-                                # print(q_A.shape, tq_A.shape)
                                 q_A = torch.cat((q_A, tq_A), dim=0)
                                 tq_A = torch.empty(0).cuda()
                                 i_qA = 0
@@ -216,25 +235,75 @@ class SVGD(torch.optim.Adam):
                                 v_B = torch.cat((v_B, tv_B), dim=0)
                                 tv_B = torch.empty(0).cuda()
                                 i_vB = 0
-                            
-        # print('q_A_grad', q_A.shape)
-        # print('q_B_grad', q_B.shape)
-        # print('v_A_grad', v_A.shape)
-        # print('v_B_grad', v_B.shape)
+                                
+                elif 'fc' in n:
+                    if 'weight' in n:
+                        if i_cls_w < self.num_particles:
+                            p_ = p.grad.data.view(1, 1, -1)
+                            tcls_w = torch.cat((tcls_w, p_), dim=1)
+                            i_cls_w += 1
+                            if i_cls_w == self.num_particles:   
+                                cls_w = torch.cat((cls_w, tcls_w), dim=0)
+                                tcls_w = torch.empty(0).cuda()
+                                i_cls_w = 0
+                    elif 'bias' in n:
+                        if i_cls_b < self.num_particles:
+                            p_ = p.grad.data.view(1, 1, -1)
+                            tcls_b = torch.cat((tcls_b, p_), dim=1)
+                            i_cls_b += 1
+                            if i_cls_b == self.num_particles:   
+                                cls_b = torch.cat((cls_b, tcls_b), dim=0)
+                                tcls_b = torch.empty(0).cuda()
+                                i_cls_b = 0
                     
-        return q_A, q_B, v_A, v_B
+                            
+        # print('q_A_grad', q_A.shape, q_A)
+        # print('q_B_grad', q_B.shape, q_B)
+        # print('v_A_grad', v_A.shape, v_A)
+        # print('v_B_grad', v_B.shape, v_B)
+        # print('cls_w', cls_w.shape)
+        # print('cls_b', cls_b.shape)
+        # exit()
+                    
+        return q_A, q_B, v_A, v_B, cls_w, cls_b
     
-    def get_grad_allP(self):
-        q_A, q_B, v_A, v_B = self.get_grad() 
-        return q_A, q_B, v_A, v_B
+    
+    def get_grad(self):
+        q_A_grad = torch.empty(0).cuda()
+        q_B_grad = torch.empty(0).cuda()
+        v_A_grad = torch.empty(0).cuda()
+        v_B_grad = torch.empty(0).cuda()
+                
+        for n, p in self.net.named_parameters():
+            for layer_id in range(12):
+                if p.requires_grad and f'blocks.{str(layer_id)}' in n:
+                    if "proj_q" in n:
+                        for net_id in range(self.num_particles):
+                            if f"w_a.{net_id}" in n:
+                                temp_w = p.data
+                                p.data = temp_w + self.lr * q_A_grad[layer_id][net_id].view(p.data.shape)
+                            elif f"w_b.{net_id}" in n:
+                                temp_w = p.data
+                                p.data = temp_w + self.lr * q_B_grad[layer_id][net_id].view(p.data.shape)
+                    elif "proj_v" in n:
+                        for net_id in range(self.num_particles):
+                            if f"w_a.{net_id}" in n:
+                                temp_w = p.data
+                                p.data = temp_w + self.lr * v_A_grad[layer_id][net_id].view(p.data.shape)
+                            elif f"w_b.{net_id}" in n:
+                                temp_w = p.data
+                                p.data = temp_w + self.lr * v_B_grad[layer_id][net_id].view(p.data.shape)
+
     
     
-    def kernel_func(self, q_A, q_B, v_A, v_B):
+    def kernel_func(self, q_A, q_B, v_A, v_B, clsW, clsB):
 
         q_A.requires_grad = True
         q_B.requires_grad = True
         v_A.requires_grad = True
         v_B.requires_grad = True
+        clsW.requires_grad = True
+        clsB.requires_grad = True
         
         kernel_qA = self.K(q_A)
         self.train_module.manual_backward(kernel_qA.sum())
@@ -252,70 +321,133 @@ class SVGD(torch.optim.Adam):
         self.train_module.manual_backward(kernel_vB.sum())
         v_B_grad = v_B.grad
         
-        # print(kernel_qA.shape, q_A_grad.shape)
-            
-        return kernel_qA, kernel_qB, kernel_vA, kernel_vB, q_A_grad, q_B_grad, v_A_grad, v_B_grad
+        kernel_clsW = self.K(clsW)
+        self.train_module.manual_backward(kernel_clsW.sum())
+        clsW_gradK = clsW.grad
+        
+        kernel_clsB = self.K(clsB)
+        self.train_module.manual_backward(kernel_clsB.sum())
+        clsB_gradK = clsB.grad
+        
+        return kernel_qA, kernel_qB, kernel_vA, kernel_vB, kernel_clsW, kernel_clsB, q_A_grad, q_B_grad, v_A_grad, v_B_grad, clsW_gradK, clsB_gradK
         
 
     def score_func(self):
-        q_A_grad, q_B_grad, v_A_grad, v_B_grad = self.get_grad_allP() #dlog_prob(X)'
+        q_A_grad, q_B_grad, v_A_grad, v_B_grad, clsW_grad, clsB_grad = self.get_grad1() #dlog_prob(X)'
         
-        try:
-            cls_grad_w = self.net.lora_vit.fc.weight.grad.data
-            cls_grad_b = self.net.lora_vit.fc.bias.grad.data
-        except:
-            cls_grad_w = self.net.fc.weight.grad.data
-            cls_grad_b = self.net.fc.bias.grad.data
+        # try:
+        #     cls_grad_w = self.net.lora_vit.fc.weight.grad.data
+        #     cls_grad_b = self.net.lora_vit.fc.bias.grad.data
+        # except:
+        #     cls_grad_w = self.net.fc.weight.grad.data
+        #     cls_grad_b = self.net.fc.bias.grad.data
+            
+        # print('gradd_cls', cls_grad_w.sum(), cls_grad_w)
         
         self.zero_grad()
-        q_A, q_B, v_A, v_B = self.get_learnable_block_allP()
-        # q_A.data += torch.rand(q_A.shape).cuda()
-        q_A, q_B, v_A, v_B = q_A.clone().detach().requires_grad_(True), q_B.clone().detach().requires_grad_(True), v_A.clone().detach().requires_grad_(True), v_B.clone().detach().requires_grad_(True)
-        # print(q_A.shape)
+        q_A, q_B, v_A, v_B, clsW, clsB = self.get_learnable_block()
+        q_A, q_B, v_A, v_B, clsW, clsB = q_A.clone().detach().requires_grad_(True), q_B.clone().detach().requires_grad_(True), v_A.clone().detach().requires_grad_(True), v_B.clone().detach().requires_grad_(True),  clsW.clone().detach().requires_grad_(True), clsB.clone().detach().requires_grad_(True)
+        
         if q_A.shape[0] > 0:
-            kernel_qA, kernel_qB, kernel_vA, kernel_vB, q_A_gradK, q_B_gradK, v_A_gradK, v_B_gradK = self.kernel_func(q_A, q_B, v_A, v_B) #self.K(self.X, self.X.detach())
+            kernel_qA, kernel_qB, kernel_vA, kernel_vB, kernel_clsW, kernel_clsB, q_A_gradK, q_B_gradK, v_A_gradK, v_B_gradK, clsW_gradK, clsB_gradK = self.kernel_func(q_A, q_B, v_A, v_B, clsW, clsB) #self.K(self.X, self.X.detach())
         else:
-            kernel_qA, kernel_qB, kernel_vA, kernel_vB, q_A_gradK, q_B_gradK, v_A_gradK, v_B_gradK = torch.ones(size=(q_A_grad.shape[0], q_A_grad.shape[0])).cuda(), torch.ones(size=(q_A_grad.shape[0], q_A_grad.shape[0])).cuda(), torch.ones(size=(q_A_grad.shape[0], q_A_grad.shape[0])).cuda(), torch.ones(size=(q_A_grad.shape[0], q_A_grad.shape[0])).cuda(), 0, 0, 0, 0
+            kernel_qA, kernel_qB, kernel_vA, kernel_vB, kernel_clsW, kernel_clsB, q_A_gradK, q_B_gradK, v_A_gradK, v_B_gradK, clsW_gradK, clsB_gradK = torch.ones(size=(q_A_grad.shape[0], q_A_grad.shape[0])).cuda(), torch.ones(size=(q_A_grad.shape[0], q_A_grad.shape[0])).cuda(), torch.ones(size=(q_A_grad.shape[0], q_A_grad.shape[0])).cuda(), torch.ones(size=(q_A_grad.shape[0], q_A_grad.shape[0])).cuda(), torch.ones(size=(q_A_grad.shape[0], q_A_grad.shape[0])).cuda(), torch.ones(size=(q_A_grad.shape[0], q_A_grad.shape[0])).cuda(), 0, 0, 0, 0, 0, 0
         
         grad_qA = (-kernel_qA.detach().matmul(q_A_grad) + q_A_gradK) / self.num_particles
+        
         grad_qB = (-kernel_qB.detach().matmul(q_B_grad) + q_B_gradK) / self.num_particles
+
         grad_vA = (-kernel_vA.detach().matmul(v_A_grad) + v_A_gradK) / self.num_particles
+
         grad_vB = (-kernel_vB.detach().matmul(v_B_grad) + v_B_gradK) / self.num_particles
         
-        return grad_qA, grad_qB, grad_vA, grad_vB, cls_grad_w, cls_grad_b
-        return q_A_grad, q_B_grad, v_A_grad, v_B_grad
+        grad_clsW = (-kernel_clsW.detach().matmul(clsW_grad) + clsW_gradK) / self.num_particles
+        
+        grad_clsB = (-kernel_clsB.detach().matmul(clsB_grad) + clsB_gradK) / self.num_particles
+        
+        # grad_qA, grad_qB, grad_vA, grad_vB = -q_A_grad, -q_B_grad, -v_A_grad, -v_B_grad
+        
+        return grad_qA, grad_qB, grad_vA, grad_vB, grad_clsW, grad_clsB
 
     def step_(self):
+        
+        
+        # for n, p in self.net.named_parameters():
+        #     if p.requires_grad == True: 
+        #         print(n)
+        #         p.data = p.data - self.lr * p.grad.data.view(-1).view(p.data.shape)
+                
+        
+        # print('update done')
+        # return
+        
+        
+        
         q_A_grad, q_B_grad, v_A_grad, v_B_grad, cls_grad_w, cls_grad_b = self.score_func()
         
-        for net_id in range(self.num_particles):        
-            for n, p in self.net.named_parameters():
-                for layer_id in range(12):
-                    if p.requires_grad and f'blocks.{str(layer_id)}' in n:
-                        if "proj_q" in n:
-                            if f"w_a.{net_id}" in n:
-                                # print('update')
-                                p.data = p.data + self.lr * q_A_grad[layer_id][net_id].view(p.data.shape)
-                            elif f"w_b.{net_id}" in n:
-                                p.data = p.data + self.lr * q_B_grad[layer_id][net_id].view(p.data.shape)
-                        elif "proj_v" in n:
-                            if f"w_a.{net_id}" in n:
-                                p.data = p.data + self.lr * v_A_grad[layer_id][net_id].view(p.data.shape)
-                            elif f"w_b.{net_id}" in n:
-                                p.data = p.data + self.lr * v_B_grad[layer_id][net_id].view(p.data.shape)
+        # print(q_A_grad.shape, q_B_grad.shape, v_A_grad.shape, v_B_grad.shape)
         
-        try:                        
-            temp_w = self.net.lora_vit.fc.weight.data
-            temp_b = self.net.lora_vit.fc.bias.data
-        except:
-            temp_w = self.net.fc.weight.data
-            temp_b = self.net.fc.bias.data
         
-        try:
-            self.net.lora_vit.fc.weight.data =  temp_w - self.lr * cls_grad_w
-            self.net.lora_vit.fc.bias.data =  temp_b - self.lr * cls_grad_b
-        except:
-            self.net.fc.weight.data =  temp_w - self.lr * cls_grad_w
-            self.net.fc.bias.data =  temp_b - self.lr * cls_grad_b
+        updated_n = []
+        
+        for net_id in range(self.num_particles):
+            for layer_id in range(12):   
+                for n, p in self.net.lora_vit.named_parameters():
+                    
+                    if p.requires_grad and n not in updated_n: 
+                    
+                        if f'blocks.{str(layer_id)}' in n:
+                            # print('B-name', n)
+                            if "proj_q" in n:
+                                if f"w_a.layer.{net_id}" in n:
+                                    # print(n)
+                                    updated_n.append(n)
+                                    temp_w = p.data
+                                    p.data = temp_w + self.lr * q_A_grad[layer_id][net_id].view(p.data.shape)
+                                elif f"w_b.layer.{net_id}" in n:
+                                    # print(n)
+                                    updated_n.append(n)
+                                    temp_w = p.data
+                                    p.data = temp_w + self.lr * q_B_grad[layer_id][net_id].view(p.data.shape)
+                            elif "proj_v" in n:
+                                if f"w_a.layer.{net_id}" in n:
+                                    # print(n)
+                                    updated_n.append(n)
+                                    temp_w = p.data
+                                    p.data = temp_w + self.lr * v_A_grad[layer_id][net_id].view(p.data.shape)
+                                elif f"w_b.layer.{net_id}" in n:
+                                    # print(n)
+                                    updated_n.append(n)
+                                    temp_w = p.data
+                                    p.data = temp_w + self.lr * v_B_grad[layer_id][net_id].view(p.data.shape)
+                                    
+                        elif 'fc' in n:
+                            if 'weight' in n:
+                                if f"layer.{net_id}" in n:
+                                    # print(n)
+                                    updated_n.append(n)
+                                    temp_w = p.data
+                                    p.data = temp_w + self.lr * cls_grad_w[layer_id][net_id].view(p.data.shape)
+                            elif 'bias' in n and f"layer.{net_id}" in n:
+                                    # print(n)
+                                    updated_n.append(n)
+                                    temp_w = p.data
+                                    p.data = temp_w + self.lr * cls_grad_b[layer_id][net_id].view(p.data.shape)
+        
+        # try:                        
+        #     temp_w = self.net.lora_vit.fc.weight.data
+        #     temp_b = self.net.lora_vit.fc.bias.data
+        # except:
+        #     temp_w = self.net.fc.weight.data
+        #     temp_b = self.net.fc.bias.data
+        
+        # try:
+        #     self.net.lora_vit.fc.weight.data =  temp_w - self.lr * cls_grad_w
+        #     self.net.lora_vit.fc.bias.data =  temp_b - self.lr * cls_grad_b
+        # except:
+        #     self.net.fc.weight.data =  temp_w - self.lr * cls_grad_w
+        #     self.net.fc.bias.data =  temp_b - self.lr * cls_grad_b
+            
+        # exit()
                                 
         

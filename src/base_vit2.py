@@ -268,6 +268,8 @@ class CustomLayerNorm(nn.Module):
 class CustomLinear(nn.Module):
     def __init__(self, dim_in, dim_out, num_particles):
         super(CustomLinear, self).__init__()
+        self.in_features = dim_in
+        self.out_features = dim_out
         self.weight = nn.Parameter(torch.randn(dim_out, dim_in))
         self.bias = nn.Parameter(torch.zeros(dim_out))
         self.num_particles = num_particles
@@ -344,9 +346,9 @@ class MultiHeadedSelfAttention(nn.Module):
 
     def __init__(self, dim, num_heads, dropout, num_particles):
         super().__init__()
-        self.proj_q = CustomLinear(dim, dim, num_particles)
-        self.proj_k = CustomLinear(dim, dim, num_particles)
-        self.proj_v = CustomLinear(dim, dim, num_particles)
+        self.proj_q = CustomLinear2(dim, dim, True, num_particles)
+        self.proj_k = CustomLinear2(dim, dim, True, num_particles)
+        self.proj_v = CustomLinear2(dim, dim, True, num_particles)
         self.drop = nn.Dropout(dropout)
         self.n_heads = num_heads
         self.scores = None  # for visualization
@@ -359,6 +361,7 @@ class MultiHeadedSelfAttention(nn.Module):
         * split D(dim) into (H(n_heads), W(width of head)) ; D = H * W
         """
         # (B, S, D) -proj-> (B, S, D) -split-> (B, S, H, W) -trans-> (B, H, S, W)
+        # print(type(x), len(x), self.num_particles)
         q, k, v = self.proj_q(x), self.proj_k(x), self.proj_v(x)
         h = []
         for i in range(self.num_particles):
@@ -407,7 +410,7 @@ class Block(nn.Module):
         super().__init__()
         
         self.attn = MultiHeadedSelfAttention(dim, num_heads, dropout, num_particles)
-        self.proj = CustomLinear(dim, dim, num_particles).cuda()
+        self.proj = CustomLinear2(dim, dim, True,  num_particles).cuda()
         self.norm1 = CustomLayerNorm(dim, num_particles, eps=1e-6)
         self.pwff = PositionWiseFeedForward(dim, ff_dim, num_particles)
         self.norm2 = CustomLayerNorm(dim, num_particles, eps=1e-6)
@@ -415,7 +418,19 @@ class Block(nn.Module):
         self.num_particles = num_particles
 
     def forward(self, x, mask):
-        h = self.drop(self.proj(self.attn(self.norm1(x), mask)))[0]
+        h = self.drop(self.proj(self.attn(self.norm1(x), mask))) #[0]
+        res = []
+        for i in range(self.num_particles):
+            res_i = x[i] + h[i]
+            res.append(res_i)
+        x = res
+        h = self.drop(self.pwff(self.norm2(x)))
+        res = []
+        for i in range(self.num_particles):
+            res_i = x[i] + h[i]
+            res.append(res_i)
+        x = res
+        return x
         x = x[0] + h
         x = [x]
         h = self.drop(self.pwff(self.norm2(x)))[0]
@@ -433,7 +448,7 @@ class Transformer(nn.Module):
         self.num_particles = num_particles
 
     def forward(self, x, mask=None):
-        orginal_x =  x[0]
+        orginal_x = x
         x = []
         for i in range(self.num_particles):
             x.append(orginal_x.detach())
@@ -488,6 +503,8 @@ class ViT(nn.Module):
         num_particles: int = 1,
     ):
         super().__init__()
+        
+        # print('num_particles', num_particles)
 
         # Configuration
         if name is None:
@@ -552,7 +569,7 @@ class ViT(nn.Module):
 
         # Classifier head
         self.norm = CustomLayerNorm(pre_logits_size, num_particles, eps=1e-6)
-        self.fc = CustomLinear(pre_logits_size, num_classes, num_particles)
+        self.fc = CustomLinear2(pre_logits_size, num_classes, True, num_particles)
         self.num_particles = num_particles
 
         # Initialize weights
@@ -602,9 +619,9 @@ class ViT(nn.Module):
                 b, -1, -1), x), dim=1)  # b,gh*gw+1,d
         if hasattr(self, 'positional_embedding'):
             x = self.positional_embedding(x)  # b,gh*gw+1,d
-        x = [x]
+        # x = [x]
         x = self.transformer(x)  # b,gh*gw+1,d
-        print('out transs')
+        
         if hasattr(self, 'pre_logits'):
             x = self.pre_logits(x)
             x = torch.tanh(x)
