@@ -1,8 +1,8 @@
 #!/bin/bash -e
 
 #SBATCH --job-name=abcxyz # create a short name for your job
-#SBATCH --output=/home/quyentt15/quyentt15/Bayesian_finetuning/mbpp%A.out # create a output file
-#SBATCH --error=/home/quyentt15/quyentt15/Bayesian_finetuning/mbpp%A.err # create a error file
+#SBATCH --output=/home/quyentt15/quyentt15/Bayesian_finetuning/q.out # create a output file
+#SBATCH --error=/home/quyentt15/quyentt15/Bayesian_finetuning/q.err # create a error file
 #SBATCH --partition=research # choose partition
 #SBATCH --gpus-per-node=1
 #SBATCH --cpus-per-task=20
@@ -15,10 +15,8 @@
 #SBATCH --mail-type=fail          # send email when job fails
 #SBATCH --mail-user=v.quyentt15@vinai.io
 
-module purge
-module load python/anaconda3/anaconda3
-eval "$(conda shell.bash hook)"
-conda activate /lustre/scratch/client/vinai/users/quyentt15/envs/coda
+# Activate the conda environment
+source ~/quyentt15/envs/anaconda3/bin/activate coda
 
 cd /home/quyentt15/quyentt15/Bayesian_finetuning/
 
