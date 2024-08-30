@@ -16,6 +16,6 @@
 #SBATCH --mail-user=v.tuantm27@vinai.io
 conda activate coda
 
-python main.py fit --config configs/lora/cifar100-r16-lr-0.05_svgd0.yaml
+python main.py fit --config configs/lora/cifar100-r16-lr-0.05_svgd_copy_2.yaml
 
 # python main.py fit --config configs/lora/cifar100-r16-lr-0.05_svgd_copy.yaml
