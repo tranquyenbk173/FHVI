@@ -48,8 +48,6 @@ class _LoRALayer0(nn.Module):
 
     def forward(self, x):
         wx = self.w(x)
-        # print(len(x))
-        # exit()
         wa = self.w_a(x)
         wb = self.w_b(wa)
         
