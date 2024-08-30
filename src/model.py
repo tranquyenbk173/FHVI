@@ -374,6 +374,7 @@ class ClassificationModel(pl.LightningModule):
             metrics = getattr(self, f"{mode}_metrics")(pred, y.argmax(1))
         else:
             pred_ = 0 #pred
+            # print(len(pred), type(pred), type(pred[0]), pred[0].shape)
             for j in range(self.num_particles):
                 pred_ = pred_ + pred[j]
             pred_ = pred_/max(1, self.num_particles)

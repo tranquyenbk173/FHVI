@@ -60,13 +60,13 @@ class _LoRALayer0(nn.Module):
     
     
 class ParticleCluster(nn.Module):
-    def __init__(self, num_particles, in_features, out_features,forA=False):
+    def __init__(self, num_particles, in_features, out_features,forA=False, bias=False):
         super(ParticleCluster, self).__init__()
         self.num_particles = num_particles
         self.forA = forA
         self.layer = torch.nn.ModuleList()
         for i in range(self.num_particles):
-            self.layer.append(torch.nn.Linear(in_features, out_features, bias=False))
+            self.layer.append(torch.nn.Linear(in_features, out_features, bias=bias))
             
         self.reset_parameters()
         
@@ -86,30 +86,7 @@ class ParticleCluster(nn.Module):
             for i in range(self.num_particles):
                 nn.init.zeros_(self.layer[i].weight)
                 # nn.init.kaiming_uniform_(self.layer[i].weight, a=math.sqrt(5))
-            
-    
-class _LoRALayer_1(nn.Module):
-    def __init__(self, num_particles: int, w: nn.Module, w_a: nn.Module, w_b: nn.Module, r: int, alpha: int):
-        super().__init__()
-        self.num_particles = num_particles
-        self.w = w
-        self.w_a = w_a
-        self.w_b = w_b
-        self.r = r
-        self.alpha = alpha
 
-    def forward(self, x):
-
-        wx = self.w(x)
-        wa = self.w_a(x)
-        wb = self.w_b(wa)
-    
-        final_res = []
-        for i in range(self.num_particles):
-            res = wx[i] + (self.alpha // self.r) * wb[i]
-            final_res.append(res)
-                    
-        return final_res
 
 
 class LoRA_ViT(nn.Module):
@@ -169,8 +146,9 @@ class LoRA_ViT(nn.Module):
 
         self.lora_vit = vit_model
         if num_classes > 0:
-            print('Re-init weight for', self.lora_vit.fc)
-            self.lora_vit.fc = CustomLinear2(vit_model.fc.in_features, num_classes, bias=True, num_particles=self.num_particles)
+            print("Re-init weight for: self.lora_vit.fc")
+            self.lora_vit.fc = ParticleCluster(num_particles=num_particles, in_features=vit_model.fc.in_features, out_features=num_classes, forA=True, bias=True)
+            # self.lora_vit.fc = CustomLinear2(vit_model.fc.in_features, num_classes, bias=True, num_particles=self.num_particles)
 
     def save_fc_parameters(self, filename: str) -> None:
         r"""Only safetensors is supported now.

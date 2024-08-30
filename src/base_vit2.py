@@ -443,7 +443,6 @@ class Transformer(nn.Module):
 
     def __init__(self, num_layers, dim, num_heads, ff_dim, dropout, num_particles):
         super().__init__()
-        print('nnn', num_particles)
         self.blocks = nn.ModuleList([
             Block(dim, num_heads, ff_dim, dropout, num_particles) for _ in range(num_layers)])
         self.num_particles = num_particles
