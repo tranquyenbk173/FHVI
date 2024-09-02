@@ -20,6 +20,6 @@ source ~/quyentt15/envs/anaconda3/bin/activate coda
 
 cd /home/quyentt15/quyentt15/Bayesian_finetuning/
 
-python main.py fit --config /home/ubuntu/peft-vit/configs/lora/cifar100-r16-lr-0.05_svgd_copy_3.yaml
+python main.py fit --config configs/lora/cifar100-r16-lr-0.05_svgd_copy_3.yaml
 
 # python main.py fit --config configs/lora/cifar100-r16-lr-0.05_svgd_copy.yaml
