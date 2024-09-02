@@ -12,6 +12,7 @@ from .utils import SVGD, RBF
 from torch.optim.lr_scheduler import LambdaLR
 from torchmetrics import MetricCollection
 from torchmetrics.classification.accuracy import Accuracy
+from torchmetrics.classification import MulticlassCalibrationError as CalibrationError
 from torchmetrics.classification.stat_scores import StatScores
 from transformers import AutoConfig, AutoModelForImageClassification
 from transformers.optimization import get_cosine_schedule_with_warmup
@@ -266,6 +267,7 @@ class ClassificationModel(pl.LightningModule):
                     task="multiclass",
                     top_k=min(5, self.n_classes),
                 ),
+                "ece": CalibrationError(num_classes=self.n_classes, norm='l1')
             }
         )
         self.val_metrics = MetricCollection(
@@ -276,6 +278,7 @@ class ClassificationModel(pl.LightningModule):
                     task="multiclass",
                     top_k=min(5, self.n_classes),
                 ),
+                "ece": CalibrationError(num_classes=self.n_classes, norm='l1')
             }
         )
         self.test_metrics = MetricCollection(
@@ -286,9 +289,11 @@ class ClassificationModel(pl.LightningModule):
                     task="multiclass",
                     top_k=min(5, self.n_classes),
                 ),
+                "ece": CalibrationError(num_classes=self.n_classes, norm='l1'),
                 "stats": StatScores(
                     task="multiclass", average=None, num_classes=self.n_classes
                 ),
+                
             }
         )
 
@@ -409,9 +414,9 @@ class ClassificationModel(pl.LightningModule):
             self.manual_backward(loss)
             
             opt.step_()
-            # opt.step()
             opt.zero_grad()
             scheduler.step()
+            return loss
         else:
             self.log("lr", self.trainer.optimizers[0].param_groups[0]["lr"], prog_bar=True)
             return self.shared_step(batch, "train")
