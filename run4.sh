@@ -1,6 +1,6 @@
 #!/bin/bash -e
 
-#SBATCH --job-name=abcxyz # create a short name for your job
+#SBATCH --job-name=abcxyz4 # create a short name for your job
 #SBATCH --output=/home/quyentt15/quyentt15/Bayesian_finetuning/mbpp%A.out # create a output file
 #SBATCH --error=/home/quyentt15/quyentt15/Bayesian_finetuning/mbpp%A.err # create a error file
 #SBATCH --partition=research # choose partition
