@@ -694,7 +694,7 @@ class ViT(nn.Module):
         x = self.transformer(x)  # b,gh*gw+1,d
         # print(type(x))
         # x = x[0]
-        print('out transs')
+        # print('out transs')
         # print(x.shape)
         if hasattr(self, 'pre_logits'):
             x = self.pre_logits(x)

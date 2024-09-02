@@ -155,7 +155,7 @@ class ClassificationModel(pl.LightningModule):
             
             if self.optimizer == 'svgd':
                 print('Model name', self.model_name)
-                self.net = ViT(name='B_16_imagenet1k', pretrained=True, num_classes=self.n_classes, image_size=self.image_size) #, num_particles=self.num_particles)
+                self.net = ViT(name='B_16_imagenet1k', pretrained=True, num_classes=self.n_classes, image_size=self.image_size, num_particles=self.num_particles)
                 self.net = self.net.cuda()
                 
                 # print("Load done")
@@ -176,7 +176,7 @@ class ClassificationModel(pl.LightningModule):
             self.net.load_state_dict(new_state_dict, strict=True)
             
             print('Load donnnnnneeee')
-            exit()
+            # exit()
             
         # exit()
 
@@ -202,18 +202,25 @@ class ClassificationModel(pl.LightningModule):
             else: #init multiple net @@ corresponding to different particles
                 
                 # lets freeze first
-                for param in self.net.parameters():
-                    param.requires_grad = False
+                # for param in self.net.parameters():
+                    # param.requires_grad = False
                     
-                if True:
-                    print('Re-init weight for', self.net.fc)
+                # if True:
+                    # print('Re-init weight for', self.net.fc)
                     # self.net.fc = torch.nn.Linear(768, self.n_classes) #, num_particles=self.num_particles)
-                    self.net.fc = CustomLinear2(768, self.n_classes, num_particles=self.num_particles)
+                    # self.net.fc = CustomLinear2(768, self.n_classes, num_particles=self.num_particles)
                     # print(self.net.fc.weight.requires_grad)
                     # print(self.net.fc.bias.requires_grad)
                     # exit()
-                # self.net = LoRA_ViT(num_particles=self.num_particles, vit_model=self.net, r=self.lora_r, alpha=self.lora_alpha, num_classes=self.n_classes)
+                self.net = LoRA_ViT(num_particles=self.num_particles, vit_model=self.net, r=self.lora_r, alpha=self.lora_alpha, num_classes=self.n_classes)
                 # print(self.net)
+
+                # print('Trainable params')
+                # for name,  param in self.net.named_parameters():
+                #     if param.requires_grad == True:
+                #         print(name)
+                        
+                # exit()
                 
                     
         elif self.training_mode == "block":
@@ -363,6 +370,7 @@ class ClassificationModel(pl.LightningModule):
 
         # Pass through network
         pred = self(x)
+        # print(pred[0].grad_fn)
         
         if self.optimizer != "svgd":
             loss = self.loss_fn(pred, y)
@@ -370,6 +378,7 @@ class ClassificationModel(pl.LightningModule):
             metrics = getattr(self, f"{mode}_metrics")(pred, y.argmax(1))
         else:
             pred_ = 0 #pred
+            # print(len(pred), type(pred), type(pred[0]), pred[0].shape)
             for j in range(self.num_particles):
                 pred_ = pred_ + pred[j]
             pred_ = pred_/max(1, self.num_particles)
@@ -404,6 +413,7 @@ class ClassificationModel(pl.LightningModule):
             self.manual_backward(loss)
             
             opt.step_()
+            # opt.step()
             opt.zero_grad()
             scheduler.step()
             return loss
