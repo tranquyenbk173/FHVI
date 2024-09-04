@@ -76,6 +76,7 @@ class ClassificationModel(pl.LightningModule):
         from_scratch: bool = False,
         num_particles: int = 10,
         use_sam: bool = False,
+        weights_path: str = 'checkpoint/B_16.pth',
     ):
         """Classification Model
 
@@ -157,11 +158,11 @@ class ClassificationModel(pl.LightningModule):
             
             if self.optimizer == 'svgd':
                 print('Model name', self.model_name)
-                self.net = ViT(name='B_16_imagenet1k', pretrained=True, num_classes=self.n_classes, image_size=self.image_size, num_particles=self.num_particles)
+                # self.net = ViT(name='B_16_imagenet1k', pretrained=True, num_classes=self.n_classes, image_size=self.image_size, num_particles=self.num_particles)
+                self.net = ViT(name='vit-b16-224-in21k', pretrained=True, num_classes=self.n_classes, image_size=self.image_size, num_particles=self.num_particles, weight_path=weights_path)
+                
                 self.net = self.net.cuda()
                 
-                # print("Load done")
-                # exit()
 
         # Load checkpoint weights
         if self.weights:
@@ -176,9 +177,6 @@ class ClassificationModel(pl.LightningModule):
                     new_state_dict[k] = v
 
             self.net.load_state_dict(new_state_dict, strict=True)
-            
-            print('Load donnnnnneeee')
-            # exit()
             
         # exit()
 
@@ -269,7 +267,7 @@ class ClassificationModel(pl.LightningModule):
                     task="multiclass",
                     top_k=min(5, self.n_classes),
                 ),
-                "ece": CalibrationError(num_classes=self.n_classes, norm='l1')
+                # "ece": CalibrationError(num_classes=self.n_classes, norm='l1')
             }
         )
         self.val_metrics = MetricCollection(
@@ -280,7 +278,7 @@ class ClassificationModel(pl.LightningModule):
                     task="multiclass",
                     top_k=min(5, self.n_classes),
                 ),
-                "ece": CalibrationError(num_classes=self.n_classes, norm='l1')
+                # "ece": CalibrationError(num_classes=self.n_classes, norm='l1')
             }
         )
         self.test_metrics = MetricCollection(
@@ -291,7 +289,7 @@ class ClassificationModel(pl.LightningModule):
                     task="multiclass",
                     top_k=min(5, self.n_classes),
                 ),
-                "ece": CalibrationError(num_classes=self.n_classes, norm='l1'),
+                # "ece": CalibrationError(num_classes=self.n_classes, norm='l1'),
                 "stats": StatScores(
                     task="multiclass", average=None, num_classes=self.n_classes
                 ),
