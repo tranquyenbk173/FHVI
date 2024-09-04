@@ -75,6 +75,7 @@ class ClassificationModel(pl.LightningModule):
         lora_bias: str = "none",
         from_scratch: bool = False,
         num_particles: int = 10,
+        use_sam: bool = False,
     ):
         """Classification Model
 
@@ -129,6 +130,7 @@ class ClassificationModel(pl.LightningModule):
         self.lora_bias = lora_bias
         self.from_scratch = from_scratch
         self.num_particles =  num_particles
+        self.use_sam = use_sam
 
         # Initialize network
         try:
@@ -321,45 +323,6 @@ class ClassificationModel(pl.LightningModule):
             res = self.net(x)
             return res
         
-    def get_learnable_block(self, net_id): #for LoRA
-        if self.optimizer == "svgd":
-            q_A = torch.empty(0).cuda()
-            q_B = torch.empty(0).cuda()
-            v_A = torch.empty(0).cuda()
-            v_B = torch.empty(0).cuda()
-            for n, p in self.net_list[net_id].named_parameters():
-                if p.requires_grad:
-                    if "query" in n:
-                        if "lora_A" in n:
-                            p_ = p.view(1, 1, -1)
-                            q_A = torch.cat((q_A, p_.cuda()), dim=0)
-                        elif "lora_B" in n:
-                            p_ = p.view(1, 1, -1)
-                            q_B = torch.cat((q_B, p_.cuda()), dim=0)
-                    elif "value" in n:
-                        if "lora_A" in n:
-                            p_ = p.view(1, 1, -1)
-                            v_A = torch.cat((v_A, p_.cuda()), dim=0)
-                        elif "lora_B" in n:
-                            p_ = p.view(1, 1, -1)
-                            v_B = torch.cat((v_B, p_.cuda()), dim=0)
-        else:
-            print('This function is just for SVGD option')
-            
-        return q_A, q_B, v_A, v_B
-    
-    def get_learnable_block_allP(self):
-        q_A = torch.empty(0).cuda()
-        q_B = torch.empty(0).cuda()
-        v_A = torch.empty(0).cuda()
-        v_B = torch.empty(0).cuda()
-        for j in range(self.num_particles):
-            q_Aj, q_Bj, v_Aj, v_Bj = self.get_learnable_block(j)
-            q_A = torch.cat((q_A, q_Aj.cuda()), dim=1)
-            q_B = torch.cat((q_B, q_Bj.cuda()), dim=1)
-            v_A = torch.cat((v_A, v_Aj.cuda()), dim=1)
-            v_B = torch.cat((v_B, v_Bj.cuda()), dim=1)
-
     def shared_step(self, batch, mode="train"):
         x, y = batch
 
@@ -412,14 +375,16 @@ class ClassificationModel(pl.LightningModule):
             opt.zero_grad()
             self.manual_backward(loss)
 
+
             # for sam
-            org_weight_tuple, kernel_tuple = opt.step1()
-            loss = self.shared_step(batch, "train")
-            opt.zero_grad()
-            self.manual_backward(loss)
-            opt.step2(org_weight_tuple, kernel_tuple)
-            
-            # opt.step_()
+            if self.use_sam:
+                org_weight_tuple, kernel_tuple = opt.step1()
+                loss = self.shared_step(batch, "train")
+                opt.zero_grad()
+                self.manual_backward(loss)
+                opt.step2(org_weight_tuple, kernel_tuple)
+            else:
+                opt.step_()
             opt.zero_grad()
             scheduler.step()
             # return loss
