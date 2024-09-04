@@ -406,17 +406,22 @@ class ClassificationModel(pl.LightningModule):
             
             torch.autograd.set_detect_anomaly(True)
 
-            
             loss = self.shared_step(batch, "train")
             
             opt.zero_grad()
             self.manual_backward(loss)
+
+            # for sam
+            org_weight_tuple, kernel_tuple = opt.step1()
+            loss = self.shared_step(batch, "train")
+            opt.zero_grad()
+            self.manual_backward(loss)
+            opt.step2(org_weight_tuple, kernel_tuple)
             
-            opt.step_()
-            # opt.step()
+            # opt.step_()
             opt.zero_grad()
             scheduler.step()
-            return loss
+            # return loss
         else:
             self.log("lr", self.trainer.optimizers[0].param_groups[0]["lr"], prog_bar=True)
             return self.shared_step(batch, "train")
