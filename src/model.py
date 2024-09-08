@@ -375,7 +375,10 @@ class ClassificationModel(pl.LightningModule):
 
 
             # for sam
+            # print(self.use_sam)
+            # exit()
             if self.use_sam:
+                
                 org_weight_tuple, kernel_tuple = opt.step1()
                 loss = self.shared_step(batch, "train")
                 opt.zero_grad()
@@ -391,7 +394,9 @@ class ClassificationModel(pl.LightningModule):
             return self.shared_step(batch, "train")
 
     def validation_step(self, batch, _):
-        return self.shared_step(batch, "val")
+        val = self.shared_step(batch, "val")
+        self.test_step(batch, _)
+        return val
 
     def test_step(self, batch, _):
         return self.shared_step(batch, "test")

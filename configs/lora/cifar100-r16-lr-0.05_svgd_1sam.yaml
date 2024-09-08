@@ -6,9 +6,10 @@ trainer:
     class_path: pytorch_lightning.loggers.CSVLogger
     init_args:
       save_dir: output
-      name: cifar100-lora-r16-lr-0.008_svgd_1p_bs24_sam
-  max_steps: 10000
-  val_check_interval: 500
+      name: cifar100-lora-r16-lr-0.008_svgd_1p_bs24_S
+  max_epochs: 15
+  # max_steps: 10000
+  val_check_interval: 30
 model:
   model_name: vit-b16-224-dino
   training_mode: lora
@@ -21,9 +22,10 @@ model:
   lora_r: 16
   lora_alpha: 16
   num_particles: 1
+  use_sam: True
 data:
   dataset: cifar100
-  root: ../Z.Data
+  root: ../Z.Data/vtab-1k/cifar/
   size: 224
   batch_size: 24
   workers: 4

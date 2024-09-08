@@ -1,6 +1,7 @@
 import os
 from functools import partial
 from typing import Optional, Sequence
+import torch.utils.data as data
 
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader
@@ -17,6 +18,8 @@ from torchvision.datasets import (
     OxfordIIITPet,
     StanfordCars,
 )
+
+from PIL import Image
 
 DATASET_DICT = {
     "cifar10": [
@@ -75,6 +78,42 @@ DATASET_DICT = {
     ],
 }
 
+def default_loader(path):
+    return Image.open(path).convert('RGB')
+
+def default_flist_reader(flist):
+    """
+    flist format: impath label\nimpath label\n ...(same to caffe's filelist)
+    """
+    imlist = []
+    with open(flist, 'r') as rf:
+        for line in rf.readlines():
+            impath, imlabel = line.strip().split()
+            imlist.append((impath, int(imlabel)))
+
+    return imlist
+
+class ImageFilelist(data.Dataset):
+    def __init__(self, root, flist, transform=None, target_transform=None,
+                 flist_reader=default_flist_reader, loader=default_loader):
+        self.root = root
+        self.imlist = flist_reader(flist)
+        self.transform = transform
+        self.target_transform = target_transform
+        self.loader = loader
+
+    def __getitem__(self, index):
+        impath, target = self.imlist[index]
+        img = self.loader(os.path.join(self.root, impath))
+        if self.transform is not None:
+            img = self.transform(img)
+        if self.target_transform is not None:
+            target = self.target_transform(target)
+
+        return img, target
+
+    def __len__(self):
+        return len(self.imlist)
 
 class DataModule(pl.LightningDataModule):
     def __init__(
@@ -190,9 +229,14 @@ class DataModule(pl.LightningDataModule):
 
     def prepare_data(self):
         if self.dataset != "custom":
-            self.train_dataset_fn(self.root)
-            self.val_dataset_fn(self.root)
-            self.test_dataset_fn(self.root)
+            pass
+            # self.train_dataset_fn(self.root)
+            # self.val_dataset_fn(self.root)
+            # self.test_dataset_fn(self.root)
+            
+    # def train_dataset_fn(root=self.root, transform=self.transforms_train):
+    #     return ImageFilelist(root=self.root, flist=root + "/train800.txt",
+    #             transform=self.transforms_train)
 
     def setup(self, stage="fit"):
         if self.dataset == "custom":
@@ -207,20 +251,32 @@ class DataModule(pl.LightningDataModule):
                 self.test_dataset = self.test_dataset_fn(transform=self.transforms_test)
         else:
             if stage == "fit":
-                self.train_dataset = self.train_dataset_fn(
-                    self.root, transform=self.transforms_train, download=False
-                )
-                self.val_dataset = self.val_dataset_fn(
-                    self.root, transform=self.transforms_test, download=False
-                )
+                # self.train_dataset = self.train_dataset_fn(
+                #     self.root, transform=self.transforms_train, download=False
+                # )
+                # self.val_dataset = self.val_dataset_fn(
+                #     self.root, transform=self.transforms_test, download=False
+                # )
+                self.train_dataset = ImageFilelist(root=self.root, flist=self.root + "/train800.txt",
+                transform=self.transforms_train)
+                self.val_dataset = ImageFilelist(root=self.root, flist=self.root + "/val200.txt",
+                transform=self.transforms_test)
             elif stage == "validate":
-                self.val_dataset = self.val_dataset_fn(
-                    self.root, transform=self.transforms_test, download=False
-                )
+                # self.val_dataset = self.val_dataset_fn(
+                #     self.root, transform=self.transforms_test, download=False
+                # )
+                self.val_dataset = ImageFilelist(root=self.root, flist=self.root + "/train800val200.txt",
+                transform=self.transforms_test)
             elif stage == "test":
-                self.test_dataset = self.test_dataset_fn(
-                    self.root, transform=self.transforms_test, download=False
-                )
+                # self.test_dataset = self.test_dataset_fn(
+                #     self.root, transform=self.transforms_test, download=False
+                # )
+                self.test_dataset = ImageFilelist(root=self.root, flist=self.root + "/test.txt",
+                transform=self.transforms_test)
+                
+            # print(len(self.train_dataset), stage)
+            # exit()
+            
 
     def train_dataloader(self):
         return DataLoader(

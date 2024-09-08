@@ -75,7 +75,7 @@ class SVGD(torch.optim.Adam):
         self.lr = lr
         self.train_module = train_module
         
-        print(self.net)
+        # print(self.net)
             
         # self.based_optim = torch.optim.Adam(
         #         params,
