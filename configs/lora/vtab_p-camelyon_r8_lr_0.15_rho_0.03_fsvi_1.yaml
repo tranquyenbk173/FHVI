@@ -6,7 +6,7 @@ trainer:
     class_path: pytorch_lightning.loggers.CSVLogger
     init_args:
       save_dir: output
-      name: caltech-lora-r8-lr-0.15_rho-0.03_1p_bs24_F
+      name: patch_camelyon-lora-r8-lr-0.15_rho-0.02_1p_bs24_F
   max_epochs: 100
   # max_steps: 10000
   val_check_interval: 30
@@ -14,7 +14,7 @@ model:
   model_name: vit-b16-224-in21k
   training_mode: lora
   optimizer: svgd
-  rho: 0.03
+  rho: 0.02
   lr: 0.15
   momentum: 0.9
   weight_decay: 0.0

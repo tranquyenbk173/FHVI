@@ -55,7 +55,6 @@ class ClassificationModel(pl.LightningModule):
         model_name: str = "vit-b16-224-in21k",
         optimizer: str = "sgd",
         rho: float= 0.05,
-        rho: float = 0.05,
         lr: float = 1e-2,
         betas: Tuple[float, float] = (0.9, 0.999),
         momentum: float = 0.9,
