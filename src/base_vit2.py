@@ -68,6 +68,12 @@ def drop_head_variant(config):
 
 
 PRETRAINED_MODELS = {
+    'vit-b16-224-in21k': {
+        'config': get_b16_config(),
+        'num_classes': 21843,
+        'image_size': (224, 224),
+        'url': "https://storage.googleapis.com/vit_models/imagenet21k/ViT-B_16.npz"
+    },
     'B_16': {
         'config': get_b16_config(),
         'num_classes': 21843,
@@ -501,6 +507,7 @@ class ViT(nn.Module):
         image_size: Optional[int] = None,
         num_classes: Optional[int] = None,
         num_particles: int = 1,
+        weight_path: str = 'weight_path',
     ):
         super().__init__()
         
@@ -582,7 +589,7 @@ class ViT(nn.Module):
             pretrained_image_size = PRETRAINED_MODELS[name]['image_size']
             load_pretrained_weights(
                 self, None,
-                weights_path='checkpoint/B_16_imagenet1k.pth',
+                weights_path=weight_path,
                 load_first_conv=(in_channels == pretrained_num_channels),
                 load_fc=(num_classes == pretrained_num_classes),
                 load_repr_layer=load_repr_layer,
