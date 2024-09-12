@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.autograd as autograd
+import torch.nn.functional
 import torch.optim as optim
 from scipy.spatial.distance import pdist, squareform
 
@@ -67,12 +68,13 @@ class RBF(torch.nn.Module):
   
 
 class SVGD(torch.optim.Adam):
-    def __init__(self, param, lr, betas, weight_decay, num_particles, train_module, net):
+    def __init__(self, param, rho, lr, betas, weight_decay, num_particles, train_module, net):
         super(SVGD, self).__init__(param, lr, betas, weight_decay)
         self.K = RBF()
         self.net = net
         self.num_particles = num_particles
         self.lr = lr
+        self.lr2 = rho
         self.train_module = train_module
         
         # print(self.net)
@@ -336,37 +338,44 @@ class SVGD(torch.optim.Adam):
                                 if f"w_a.layer.{net_id}" in n:
                                     # print(n)
                                     updated_n.append(n)
-                                    temp_w = p.data
-                                    p.data = temp_w + self.lr * q_A_grad[layer_id][net_id].view(p.data.shape)
+                                    # print(q_A_grad[layer_id][net_id].shape)
+                                    # exit()
+                                    grad_n = torch.nn.functional.normalize(q_A_grad[layer_id][net_id],  p=2, dim=0)
+                                    p.data = p.data + self.lr2 * grad_n.view(p.data.shape)
                                 elif f"w_b.layer.{net_id}" in n:
                                     # print(n)
                                     updated_n.append(n)
-                                    temp_w = p.data
-                                    p.data = temp_w + self.lr * q_B_grad[layer_id][net_id].view(p.data.shape)
+                                    grad_n = torch.nn.functional.normalize(q_B_grad[layer_id][net_id],  p=2, dim=0)
+                                    p.data = p.data + self.lr2 * grad_n.view(p.data.shape)
+                                    # p.data = p.data + self.lr * q_B_grad[layer_id][net_id].view(p.data.shape)
                             elif "proj_v" in n:
                                 if f"w_a.layer.{net_id}" in n:
                                     # print(n)
                                     updated_n.append(n)
-                                    temp_w = p.data
-                                    p.data = temp_w + self.lr * v_A_grad[layer_id][net_id].view(p.data.shape)
+                                    grad_n = torch.nn.functional.normalize(v_A_grad[layer_id][net_id],  p=2, dim=0)
+                                    p.data = p.data + self.lr2 * grad_n.view(p.data.shape)
+                                    # p.data = p.data + self.lr * v_A_grad[layer_id][net_id].view(p.data.shape)
                                 elif f"w_b.layer.{net_id}" in n:
                                     # print(n)
                                     updated_n.append(n)
-                                    temp_w = p.data
-                                    p.data = temp_w + self.lr * v_B_grad[layer_id][net_id].view(p.data.shape)
+                                    grad_n = torch.nn.functional.normalize(v_B_grad[layer_id][net_id],  p=2, dim=0)
+                                    p.data = p.data + self.lr2 * grad_n.view(p.data.shape)
+                                    # p.data = p.data + self.lr2 * v_B_grad[layer_id][net_id].view(p.data.shape)
                                     
                         elif 'fc' in n:
                             if 'weight' in n:
                                 if f"layer.{net_id}" in n:
                                     # print(n)
                                     updated_n.append(n)
-                                    temp_w = p.data
-                                    p.data = temp_w + self.lr * clsW_grad[layer_id][net_id].view(p.data.shape)
+                                    grad_n = torch.nn.functional.normalize(clsW_grad[layer_id][net_id],  p=2, dim=0)
+                                    p.data = p.data + self.lr2 * grad_n.view(p.data.shape)
+                                    # p.data = temp_w + self.lr * clsW_grad[layer_id][net_id].view(p.data.shape)
                             elif 'bias' in n and f"layer.{net_id}" in n:
                                     # print(n)
                                     updated_n.append(n)
-                                    temp_w = p.data
-                                    p.data = temp_w + self.lr * clsB_grad[layer_id][net_id].view(p.data.shape)
+                                    grad_n = torch.nn.functional.normalize(clsB_grad[layer_id][net_id],  p=2, dim=0)
+                                    p.data = p.data + self.lr2 * grad_n.view(p.data.shape)
+                                    # p.data = temp_w + self.lr * clsB_grad[layer_id][net_id].view(p.data.shape)
                                     
         return org_weight_tuple, kernel_tuple
     

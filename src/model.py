@@ -54,6 +54,7 @@ class ClassificationModel(pl.LightningModule):
         self,
         model_name: str = "vit-b16-224-in21k",
         optimizer: str = "sgd",
+        rho: float= 0.05,
         rho: float = 0.05,
         lr: float = 1e-2,
         betas: Tuple[float, float] = (0.9, 0.999),
@@ -111,6 +112,7 @@ class ClassificationModel(pl.LightningModule):
         self.save_hyperparameters()
         self.model_name = model_name
         self.optimizer = optimizer
+        self.rho = rho
         self.lr = lr
         self.betas = betas
         self.momentum = momentum
@@ -431,7 +433,7 @@ class ClassificationModel(pl.LightningModule):
                 weight_decay=self.weight_decay,
             )
         elif self.optimizer == "svgd":  #use Adam as the base optimizer by default @@        
-            optimizer =  SVGD(param = self.net.parameters(), lr=self.lr, betas=self.betas,
+            optimizer =  SVGD(param = self.net.parameters(), rho=self.rho, lr=self.lr, betas=self.betas,
                 weight_decay=self.weight_decay, num_particles=self.num_particles, train_module=self, net=self.net)
         else:
             raise ValueError(
