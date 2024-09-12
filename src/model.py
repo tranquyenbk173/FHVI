@@ -54,6 +54,7 @@ class ClassificationModel(pl.LightningModule):
         self,
         model_name: str = "vit-b16-224-in21k",
         optimizer: str = "sgd",
+        rho: float = 0.05,
         lr: float = 1e-2,
         betas: Tuple[float, float] = (0.9, 0.999),
         momentum: float = 0.9,
@@ -132,7 +133,7 @@ class ClassificationModel(pl.LightningModule):
         self.from_scratch = from_scratch
         self.num_particles =  num_particles
         self.use_sam = use_sam
-
+        
         # Initialize network
         try:
             model_path = MODEL_DICT[self.model_name]
@@ -308,6 +309,8 @@ class ClassificationModel(pl.LightningModule):
             # Only converts targets to one-hot if no label smoothing, mixup or cutmix is set
             x, y = self.mixup(x, y)
         else:
+            # print(self.n_classes)
+            # print(y)
             y = F.one_hot(y, num_classes=self.n_classes).float()
 
         # Pass through network

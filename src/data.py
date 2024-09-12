@@ -17,6 +17,10 @@ from torchvision.datasets import (
     ImageFolder,
     OxfordIIITPet,
     StanfordCars,
+    Caltech101,
+    SVHN,
+    SUN397,
+    
 )
 
 from PIL import Image
@@ -33,6 +37,12 @@ DATASET_DICT = {
         partial(CIFAR100, train=False, download=True),
         partial(CIFAR100, train=False, download=True),
         100,
+    ],
+    "caltech101": [
+        partial(Caltech101, train=True, download=True),
+        partial(Caltech101, train=False, download=True),
+        partial(Caltech101, train=False, download=True),
+        102,
     ],
     "flowers102": [
         partial(Flowers102, split="train", download=True),
@@ -76,6 +86,23 @@ DATASET_DICT = {
         partial(StanfordCars, split="test", download=True),
         196,
     ],
+    "svhn":  [
+        partial(SVHN, split="train", download=True),
+        partial(SVHN, split="test", download=True),
+        partial(SVHN, split="test", download=True),
+        10,
+    ],
+    "SUN397": [
+        partial(SUN397, split="train", download=True),
+        partial(SUN397, split="test", download=True),
+        partial(SUN397, split="test", download=True),
+        10,
+    ],
+    "patch_camelyon": [
+        _, _, _, 
+        2
+    ],
+    
 }
 
 def default_loader(path):
@@ -189,6 +216,7 @@ class DataModule(pl.LightningDataModule):
             )
             print(f"Using custom dataset from {self.root}")
         else:
+            pass
 
             try:
                 (
