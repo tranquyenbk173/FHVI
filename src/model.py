@@ -178,7 +178,6 @@ class ClassificationModel(pl.LightningModule):
 
             self.net.load_state_dict(new_state_dict, strict=True)
             
-        # exit()
 
         # Prepare model depending on fine-tuning mode
         if self.training_mode == "linear":
@@ -201,26 +200,7 @@ class ClassificationModel(pl.LightningModule):
                 self.net = get_peft_model(self.net, config)
             else: #init multiple net @@ corresponding to different particles
                 
-                # lets freeze first
-                # for param in self.net.parameters():
-                    # param.requires_grad = False
-                    
-                # if True:
-                    # print('Re-init weight for', self.net.fc)
-                    # self.net.fc = torch.nn.Linear(768, self.n_classes) #, num_particles=self.num_particles)
-                    # self.net.fc = CustomLinear2(768, self.n_classes, num_particles=self.num_particles)
-                    # print(self.net.fc.weight.requires_grad)
-                    # print(self.net.fc.bias.requires_grad)
-                    # exit()
                 self.net = LoRA_ViT(num_particles=self.num_particles, vit_model=self.net, r=self.lora_r, alpha=self.lora_alpha, num_classes=self.n_classes)
-                # print(self.net)
-
-                # print('Trainable params')
-                # for name,  param in self.net.named_parameters():
-                #     if param.requires_grad == True:
-                #         print(name)
-                        
-                # exit()
                 
                     
         elif self.training_mode == "block":
@@ -331,8 +311,11 @@ class ClassificationModel(pl.LightningModule):
             y = F.one_hot(y, num_classes=self.n_classes).float()
 
         # Pass through network
-        pred = self(x)
-        # print(pred[0].grad_fn)
+        try:
+            pred = self(x)
+        except:
+            x, y = x.cuda(), y.cuda()
+            pred = self(x)
         
         if self.optimizer != "svgd":
             loss = self.loss_fn(pred, y)
@@ -340,7 +323,6 @@ class ClassificationModel(pl.LightningModule):
             metrics = getattr(self, f"{mode}_metrics")(pred, y.argmax(1))
         else:
             pred_ = 0 #pred
-            # print(len(pred), type(pred), type(pred[0]), pred[0].shape)
             for j in range(self.num_particles):
                 pred_ = pred_ + pred[j]
             pred_ = pred_/max(1, self.num_particles)
@@ -375,8 +357,6 @@ class ClassificationModel(pl.LightningModule):
 
 
             # for sam
-            # print(self.use_sam)
-            # exit()
             if self.use_sam:
                 
                 org_weight_tuple, kernel_tuple = opt.step1()
@@ -395,9 +375,14 @@ class ClassificationModel(pl.LightningModule):
 
     def validation_step(self, batch, _):
         val = self.shared_step(batch, "val")
-        self.test_step(batch, _)
+        # self.test_step(batch, _)
         return val
-
+    
+    def on_validation_epoch_end(self):
+        test_dataloader = self.trainer.datamodule.test_dataloader()
+        for batch in test_dataloader:
+            self.test_step(batch, 0)
+            
     def test_step(self, batch, _):
         return self.shared_step(batch, "test")
 

@@ -189,6 +189,7 @@ class DataModule(pl.LightningDataModule):
             )
             print(f"Using custom dataset from {self.root}")
         else:
+
             try:
                 (
                     self.train_dataset_fn,
@@ -197,6 +198,7 @@ class DataModule(pl.LightningDataModule):
                     self.num_classes,
                 ) = DATASET_DICT[self.dataset]
                 print(f"Using the {self.dataset} dataset")
+                # print(self.train_dataset_fn)
             except:
                 raise ValueError(
                     f"{dataset} is not an available dataset. Should be one of {[k for k in DATASET_DICT.keys()]}"
@@ -251,31 +253,34 @@ class DataModule(pl.LightningDataModule):
                 self.test_dataset = self.test_dataset_fn(transform=self.transforms_test)
         else:
             if stage == "fit":
+                print('>>>> Stage fit \n \n \n')
                 # self.train_dataset = self.train_dataset_fn(
                 #     self.root, transform=self.transforms_train, download=False
                 # )
                 # self.val_dataset = self.val_dataset_fn(
                 #     self.root, transform=self.transforms_test, download=False
                 # )
-                self.train_dataset = ImageFilelist(root=self.root, flist=self.root + "/train800.txt",
+                self.train_dataset = ImageFilelist(root=self.root, flist=self.root + "/train800val200.txt",
                 transform=self.transforms_train)
                 self.val_dataset = ImageFilelist(root=self.root, flist=self.root + "/val200.txt",
                 transform=self.transforms_test)
+                self.test_dataset = ImageFilelist(root=self.root, flist=self.root + "/test.txt",
+                transform=self.transforms_test)
             elif stage == "validate":
+                print('>>>> Stage val \n \n \n')
                 # self.val_dataset = self.val_dataset_fn(
                 #     self.root, transform=self.transforms_test, download=False
                 # )
-                self.val_dataset = ImageFilelist(root=self.root, flist=self.root + "/train800val200.txt",
+                self.val_dataset = ImageFilelist(root=self.root, flist=self.root + "/val200.txt",
                 transform=self.transforms_test)
             elif stage == "test":
+                print('>>>> Stage test \n \n \n')
                 # self.test_dataset = self.test_dataset_fn(
                 #     self.root, transform=self.transforms_test, download=False
                 # )
                 self.test_dataset = ImageFilelist(root=self.root, flist=self.root + "/test.txt",
                 transform=self.transforms_test)
-                
-            # print(len(self.train_dataset), stage)
-            # exit()
+
             
 
     def train_dataloader(self):
