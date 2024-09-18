@@ -13,7 +13,7 @@ from src.model import ClassificationModel
 
 
 class MyLightningCLI(LightningCLI):
-    def add_arguments_to_parser(self, parser) -> None:
+    def add_arguments_to_parser(self, parser):
         parser.add_lightning_class_args(ModelCheckpoint, "model_checkpoint")
         parser.set_defaults(
             {

@@ -1,0 +1,39 @@
+# pytorch_lightning==2.0.2
+trainer:
+  accelerator: gpu
+  devices: 1
+  logger:
+    class_path: pytorch_lightning.loggers.CSVLogger
+    init_args:
+      save_dir: output
+      name: dmlab-lora-r8-lr-0.01_rho-0.02_1p_bs32_F_Tuan
+  max_epochs: 150
+  # max_steps: 10000
+  val_check_interval: 30
+model:
+  model_name: vit-b16-224-in21k
+  training_mode: lora
+  optimizer: svgd
+  rho: 0.02
+  lr: 0.01
+  momentum: 0.9
+  weight_decay: 0.0
+  scheduler: cosine
+  warmup_steps: 500
+  lora_r: 8
+  lora_alpha: 8
+  num_particles: 1
+  use_sam: True
+  
+data:
+  dataset: dmlab
+  root: ../Z.Data/vtab-1k/dmlab/
+  size: 224
+  batch_size: 32
+  workers: 4
+model_checkpoint:
+  dirpath: saved_checkpoints
+  filename: best-step-{step}-{val_acc:.4f}
+  monitor: val_acc
+  mode: max
+  save_last: true
