@@ -78,6 +78,7 @@ class ClassificationModel(pl.LightningModule):
         num_particles: int = 10,
         use_sam: bool = False,
         weights_path: str = 'checkpoint/B_16.pth',
+        epsilon: float = 0.01,
     ):
         """Classification Model
 
@@ -134,6 +135,7 @@ class ClassificationModel(pl.LightningModule):
         self.from_scratch = from_scratch
         self.num_particles =  num_particles
         self.use_sam = use_sam
+        self.epsilon = epsilon
         
         # Initialize network
         try:
@@ -158,7 +160,7 @@ class ClassificationModel(pl.LightningModule):
                 image_size=self.image_size,
             )
             
-            if self.optimizer == 'svgd':
+            if self.optimizer == 'svgd' or self.optimizer == "deep_ens":
                 print('Model name', self.model_name)
                 # self.net = ViT(name='B_16_imagenet1k', pretrained=True, num_classes=self.n_classes, image_size=self.image_size, num_particles=self.num_particles)
                 self.net = ViT(name='vit-b16-224-in21k', pretrained=True, num_classes=self.n_classes, image_size=self.image_size, num_particles=self.num_particles, weight_path=weights_path)
@@ -198,7 +200,7 @@ class ClassificationModel(pl.LightningModule):
                 bias=self.lora_bias,
                 modules_to_save=["classifier"],
             )
-            if self.optimizer != "svgd":
+            if self.optimizer != "svgd" and self.optimizer != "deep_ens":
                 self.net = get_peft_model(self.net, config)
             else: #init multiple net @@ corresponding to different particles
                 
@@ -293,11 +295,11 @@ class ClassificationModel(pl.LightningModule):
 
         self.test_metric_outputs = []
         
-        if self.optimizer == 'svgd':
+        if self.optimizer == 'svgd' or self.optimizer == 'deep_ens':
             self.automatic_optimization = False
 
     def forward(self, x):
-        if self.optimizer != "svgd":
+        if self.optimizer != "svgd" and self.optimizer != 'deep_ens':
             return self.net(x).logits
         else:
             res = self.net(x)
@@ -305,27 +307,69 @@ class ClassificationModel(pl.LightningModule):
         
     def shared_step(self, batch, mode="train"):
         x, y = batch
+        x, y = x.cuda(), y.cuda()
 
         if mode == "train":
             # Only converts targets to one-hot if no label smoothing, mixup or cutmix is set
             x, y = self.mixup(x, y)
         else:
-            # print(self.n_classes)
-            # print(y)
             y = F.one_hot(y, num_classes=self.n_classes).float()
 
-        # Pass through network
-        try:
-            pred = self(x)
-        except:
-            x, y = x.cuda(), y.cuda()
-            pred = self(x)
         
-        if self.optimizer != "svgd":
+        if self.optimizer != "svgd" and self.optimizer != "deep_ens":
+            # Pass through network
+
+            pred = self(x)
             loss = self.loss_fn(pred, y)
             # Get accuracy
             metrics = getattr(self, f"{mode}_metrics")(pred, y.argmax(1))
+        elif self.optimizer == 'deep_ens' and mode == "train":
+            
+            scaled_epsilon = self.epsilon * (x.max() - x.min())
+
+            # force inputs to require gradient
+            inputs = x.clone()
+            inputs.requires_grad = True
+            
+            # standard forwards pass
+            pred = self(inputs)
+                                
+            pred_ = 0 #pred
+            for j in range(self.num_particles):
+                pred_ = pred_ + pred[j]
+            pred_ = pred_/max(1, self.num_particles)
+            loss = self.loss_fn(pred_, y)
+            
+            # now compute gradients wrt input
+            self.optimizers().zero_grad()
+            # print(loss)
+            self.manual_backward(loss) #, retain_graph=True)
+            # now compute sign of gradients
+            inputs_grad = torch.sign(inputs.grad)
+
+            # perturb inputs and use clamped output
+            inputs_perturbed = torch.clamp(
+                inputs + scaled_epsilon * inputs_grad, 0.0, 1.0
+            ).detach()
+            inputs.grad.zero_()
+            
+            inputs_all = torch.cat((inputs, inputs_perturbed), dim=0)
+            outputs_all = self(inputs_all)
+
+            # compute adversarial version of loss
+            pred_p = 0 #pred
+            for j in range(self.num_particles):
+                pred_p = pred_p + outputs_all[j]
+            pred_p = pred_p/max(1, self.num_particles)
+            final_loss = (self.loss_fn(pred_p[:y.shape[0]], y) + self.loss_fn(pred_p[y.shape[0]:], y))/2.0
+            
+            loss = final_loss
+            
+            # Get accuracy
+            metrics = getattr(self, f"{mode}_metrics")(pred_, y.argmax(1))
+
         else:
+            pred = self(x)
             pred_ = 0 #pred
             for j in range(self.num_particles):
                 pred_ = pred_ + pred[j]
@@ -424,7 +468,7 @@ class ClassificationModel(pl.LightningModule):
                 betas=self.betas,
                 weight_decay=self.weight_decay,
             )
-        elif self.optimizer == "sgd":
+        elif self.optimizer == "sgd" or self.optimizer == 'deep_ens':
             optimizer = SGD(
                 self.net.parameters(),
                 lr=self.lr,

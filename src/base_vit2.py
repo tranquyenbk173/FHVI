@@ -437,11 +437,6 @@ class Block(nn.Module):
             res.append(res_i)
         x = res
         return x
-        x = x[0] + h
-        x = [x]
-        h = self.drop(self.pwff(self.norm2(x)))[0]
-        x = x[0] + h
-        return [x]
         
 
 class Transformer(nn.Module):
@@ -457,7 +452,7 @@ class Transformer(nn.Module):
         orginal_x = x
         x = []
         for i in range(self.num_particles):
-            x.append(orginal_x.detach())
+            x.append(orginal_x.clone())
             
         for block in self.blocks:
             x = block(x, mask)
