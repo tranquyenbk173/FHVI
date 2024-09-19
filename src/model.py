@@ -418,8 +418,20 @@ class ClassificationModel(pl.LightningModule):
             scheduler.step()
             # return loss
         else:
+            opt = self.optimizers()
+            scheduler = self.lr_schedulers()
+            loss = self.shared_step(batch, "train")
+            
+            opt.zero_grad()
+            self.manual_backward(loss)
+            # print(self.net.lora_vit.fc.layer[0].weight.grad)
+            opt.step()
+            # print(self.net.lora_vit.fc.layer[0].weight.grad)
+            # exit()
+            scheduler.step()
+            
             self.log("lr", self.trainer.optimizers[0].param_groups[0]["lr"], prog_bar=True)
-            return self.shared_step(batch, "train")
+            # return self.shared_step(batch, "train")
 
     def validation_step(self, batch, _):
         val = self.shared_step(batch, "val")
