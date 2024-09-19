@@ -326,10 +326,11 @@ class ClassificationModel(pl.LightningModule):
             # Get accuracy
             metrics = getattr(self, f"{mode}_metrics")(pred, y.argmax(1))
         else:
-            pred_ = 0 #pred
-            for j in range(self.num_particles):
-                pred_ = pred_ + pred[j]
-            pred_ = pred_/max(1, self.num_particles)
+            #pred_ = 0 #pred
+            #for j in range(self.num_particles):
+            #    pred_ = pred_ + pred[j]
+            #pred_ = pred_/max(1, self.num_particles)
+            pred_ = torch.max(pred)
             loss = self.loss_fn(pred_, y)
             
             # Get accuracy

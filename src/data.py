@@ -2,7 +2,7 @@ import os
 from functools import partial
 from typing import Optional, Sequence
 import torch.utils.data as data
-
+from timm.data import create_transform
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader
 from torchvision import transforms
@@ -286,20 +286,18 @@ class DataModule(pl.LightningDataModule):
                 raise ValueError(
                     f"{dataset} is not an available dataset. Should be one of {[k for k in DATASET_DICT.keys()]}"
                 )
+        normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 
         self.transforms_train = transforms.Compose(
             [
-                transforms.RandomResizedCrop(
-                    (self.size, self.size),
-                    scale=(self.min_scale, self.max_scale),
-                ),
+                transforms.Resize((224, 224)),
                 transforms.RandomHorizontalFlip(self.flip_prob),
-                transforms.TrivialAugmentWide()
-                if self.use_trivial_aug
-                else transforms.RandAugment(self.rand_aug_n, self.rand_aug_m),
+                #transforms.TrivialAugmentWide()
+                #if self.use_trivial_aug
+                #else transforms.RandAugment(self.rand_aug_n, self.rand_aug_m),
                 transforms.ToTensor(),
-                transforms.Normalize(mean=self.mean, std=self.std),
-                transforms.RandomErasing(p=self.erase_prob),
+                normalize,
+                #transforms.RandomErasing(p=self.erase_prob),
             ]
         )
         self.transforms_test = transforms.Compose(
@@ -308,7 +306,8 @@ class DataModule(pl.LightningDataModule):
                     (self.size, self.size),
                 ),
                 transforms.ToTensor(),
-                transforms.Normalize(mean=self.mean, std=self.std),
+                normalize,
+                #transforms.Normalize(mean=self.mean, std=self.std),
             ]
         )
 
