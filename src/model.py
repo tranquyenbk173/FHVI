@@ -23,6 +23,7 @@ from src.mixup import Mixup
 from .utils import block_expansion
 from .lora import LoRA_ViT
 from .base_vit2 import ViT, CustomLinear, CustomLinear2
+from .swag import SWAG, bn_update
 # from .base_vit import ViT, CustomLinear
 
 torch.autograd.set_detect_anomaly(True)
@@ -79,6 +80,10 @@ class ClassificationModel(pl.LightningModule):
         use_sam: bool = False,
         weights_path: str = 'checkpoint/B_16.pth',
         epsilon: float = 0.01,
+        cov_mat: bool = True,
+        max_num_models: int = 20,
+        start_swag_step: int = 10000,
+        swa_freq: int = 10
     ):
         """Classification Model
 
@@ -136,7 +141,10 @@ class ClassificationModel(pl.LightningModule):
         self.num_particles =  num_particles
         self.use_sam = use_sam
         self.epsilon = epsilon
-        
+        self.cov_mat = cov_mat
+        self.max_num_models = max_num_models
+        self.start_swag_step = start_swag_step
+        self.swa_freq = swa_freq
         # Initialize network
         try:
             model_path = MODEL_DICT[self.model_name]
@@ -160,7 +168,7 @@ class ClassificationModel(pl.LightningModule):
                 image_size=self.image_size,
             )
             
-            if self.optimizer == 'svgd' or self.optimizer == "deep_ens":
+            if self.optimizer in ['svgd', "deep_ens", 'SWAG']:
                 print('Model name', self.model_name)
                 # self.net = ViT(name='B_16_imagenet1k', pretrained=True, num_classes=self.n_classes, image_size=self.image_size, num_particles=self.num_particles)
                 self.net = ViT(name='vit-b16-224-in21k', pretrained=True, num_classes=self.n_classes, image_size=self.image_size, num_particles=self.num_particles, weight_path=weights_path)
@@ -200,11 +208,13 @@ class ClassificationModel(pl.LightningModule):
                 bias=self.lora_bias,
                 modules_to_save=["classifier"],
             )
-            if self.optimizer != "svgd" and self.optimizer != "deep_ens":
+            if self.optimizer not in ['svgd', "deep_ens", 'SWAG']:
                 self.net = get_peft_model(self.net, config)
             else: #init multiple net @@ corresponding to different particles
                 
                 self.net = LoRA_ViT(num_particles=self.num_particles, vit_model=self.net, r=self.lora_r, alpha=self.lora_alpha, num_classes=self.n_classes)
+                if self.optimizer == 'SWAG':
+                    self.swag = SWAG(base=self.net,no_cov_mat=not self.cov_mat, max_num_models=self.max_num_models)
                 
                     
         elif self.training_mode == "block":
@@ -295,11 +305,11 @@ class ClassificationModel(pl.LightningModule):
 
         self.test_metric_outputs = []
         
-        if self.optimizer == 'svgd' or self.optimizer == 'deep_ens':
+        if self.optimizer in ['svgd', 'deep_ens', 'SWAG']:
             self.automatic_optimization = False
 
     def forward(self, x):
-        if self.optimizer != "svgd" and self.optimizer != 'deep_ens':
+        if self.optimizer not in ['svgd', 'deep_ens', 'SWAG']:
             return self.net(x).logits
         else:
             res = self.net(x)
@@ -316,7 +326,7 @@ class ClassificationModel(pl.LightningModule):
             y = F.one_hot(y, num_classes=self.n_classes).float()
 
         
-        if self.optimizer != "svgd" and self.optimizer != "deep_ens":
+        if self.optimizer not in ['svgd', 'deep_ens', 'SWAG']:
             # Pass through network
 
             pred = self(x)
@@ -342,7 +352,6 @@ class ClassificationModel(pl.LightningModule):
             
             # now compute gradients wrt input
             self.optimizers().zero_grad()
-            # print(loss)
             self.manual_backward(loss) #, retain_graph=True)
             # now compute sign of gradients
             inputs_grad = torch.sign(inputs.grad)
@@ -403,7 +412,6 @@ class ClassificationModel(pl.LightningModule):
             opt.zero_grad()
             self.manual_backward(loss)
 
-
             # for sam
             if self.use_sam:
                 
@@ -417,6 +425,21 @@ class ClassificationModel(pl.LightningModule):
             opt.zero_grad()
             scheduler.step()
             # return loss
+        elif self.optimizer == 'SWAG':
+            self.log("lr", self.trainer.optimizers[0].param_groups[0]["lr"], prog_bar=True)
+            opt = self.optimizers()
+            scheduler = self.lr_schedulers()
+            loss = self.shared_step(batch, "train")
+                
+            opt.zero_grad()
+            self.manual_backward(loss)
+            opt.step()
+            scheduler.step()
+            
+            if self.global_step > self.start_swag_step and (self.global_step + 1 - self.start_swag_step) % self.swa_freq == 0:
+                self.swag.collect_model(self.net)
+                
+                
         else:
             opt = self.optimizers()
             scheduler = self.lr_schedulers()
@@ -424,16 +447,16 @@ class ClassificationModel(pl.LightningModule):
             
             opt.zero_grad()
             self.manual_backward(loss)
-            # print(self.net.lora_vit.fc.layer[0].weight.grad)
             opt.step()
-            # print(self.net.lora_vit.fc.layer[0].weight.grad)
-            # exit()
             scheduler.step()
             
             self.log("lr", self.trainer.optimizers[0].param_groups[0]["lr"], prog_bar=True)
             # return self.shared_step(batch, "train")
 
     def validation_step(self, batch, _):
+        if self.optimizer == 'SWAG':
+            self.swag.sample(0.0)
+            bn_update(batch, self.swag)
         val = self.shared_step(batch, "val")
         # self.test_step(batch, _)
         return val
@@ -480,7 +503,15 @@ class ClassificationModel(pl.LightningModule):
                 betas=self.betas,
                 weight_decay=self.weight_decay,
             )
-        elif self.optimizer == "sgd" or self.optimizer == 'deep_ens':
+        elif self.optimizer in ["sgd", 'deep_ens']:
+            optimizer = SGD(
+                self.net.parameters(),
+                lr=self.lr,
+                momentum=self.momentum,
+                weight_decay=self.weight_decay,
+            )
+        elif self.optimizer == 'SWAG':
+            # print(self.net.parameters())
             optimizer = SGD(
                 self.net.parameters(),
                 lr=self.lr,
