@@ -458,7 +458,7 @@ class ClassificationModel(pl.LightningModule):
             self.swag.sample(0.0)
             bn_update(batch, self.swag)
         val = self.shared_step(batch, "val")
-        self.test_step(batch, _)
+        # self.test_step(batch, _)
         return val
     
     def on_validation_epoch_end(self):
