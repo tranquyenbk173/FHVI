@@ -174,7 +174,7 @@ class ClassificationModel(pl.LightningModule):
                 image_size=self.image_size,
             )
             
-            if self.optimizer in ['svgd', "deep_ens", 'SWAG']:
+            if self.optimizer in ['svgd', "deep_ens", 'SWAG', "flat_seeking"]:
                 print('Model name', self.model_name)
                 # self.net = ViT(name='B_16_imagenet1k', pretrained=True, num_classes=self.n_classes, image_size=self.image_size, num_particles=self.num_particles)
                 self.net = ViT(name='vit-b16-224-in21k', pretrained=True, num_classes=self.n_classes, image_size=self.image_size, num_particles=self.num_particles, weight_path=weights_path)
@@ -214,7 +214,7 @@ class ClassificationModel(pl.LightningModule):
                 bias=self.lora_bias,
                 modules_to_save=["classifier"],
             )
-            if self.optimizer not in ['svgd', "deep_ens", 'SWAG']:
+            if self.optimizer not in ['svgd', "deep_ens", 'SWAG', 'flat_seeking']:
                 self.net = get_peft_model(self.net, config)
             else: #init multiple net @@ corresponding to different particles
                 
@@ -222,7 +222,7 @@ class ClassificationModel(pl.LightningModule):
                 if self.optimizer == 'svgd' and self.use_swa_svgd:
                     self.swa_model = AveragedModel(self.net)
                     
-                if self.optimizer == 'SWAG':
+                if self.optimizer == 'SWAG' or self.optimizer == 'flat_seeking':
                     self.swag = SWAG(base=self.net,no_cov_mat=not self.cov_mat, max_num_models=self.max_num_models)
                 
                     
@@ -314,11 +314,11 @@ class ClassificationModel(pl.LightningModule):
 
         self.test_metric_outputs = []
         
-        if self.optimizer in ['svgd', 'deep_ens', 'SWAG']:
+        if self.optimizer in ['svgd', 'deep_ens', 'SWAG', 'flat_seeking']:
             self.automatic_optimization = False
 
     def forward(self, x):
-        if self.optimizer not in ['svgd', 'deep_ens', 'SWAG']:
+        if self.optimizer not in ['svgd', 'deep_ens', 'SWAG', 'flat_seeking']:
             return self.net(x).logits
         else:
             res = self.net(x)
@@ -335,7 +335,7 @@ class ClassificationModel(pl.LightningModule):
             y = F.one_hot(y, num_classes=self.n_classes).float()
 
         
-        if self.optimizer not in ['svgd', 'deep_ens', 'SWAG']:
+        if self.optimizer not in ['svgd', 'deep_ens', 'SWAG', 'flat_seeking']:
             # Pass through network
 
             pred = self(x)
@@ -508,7 +508,7 @@ class ClassificationModel(pl.LightningModule):
             # return self.shared_step(batch, "train")
 
     def validation_step(self, batch, _):
-        if self.optimizer == 'SWAG':
+        if self.optimizer == 'SWAG' or self.optimizer == 'flat_seeking':
             self.swag.sample(0.0)
             bn_update(batch, self.swag)
             
@@ -567,7 +567,7 @@ class ClassificationModel(pl.LightningModule):
                 momentum=self.momentum,
                 weight_decay=self.weight_decay,
             )
-        elif self.optimizer == 'SWAG':
+        elif self.optimizer == 'SWAG' or self.optimizer == 'flat_seeking' :
             # print(self.net.parameters())
             optimizer = SGD(
                 self.net.parameters(),
@@ -580,7 +580,7 @@ class ClassificationModel(pl.LightningModule):
                 weight_decay=self.weight_decay, num_particles=self.num_particles, train_module=self, net=self.net, use_sym_kl=self.use_sym_kl)
         else:
             raise ValueError(
-                f"{self.optimizer} is not an available optimizer. Should be one of ['adam', 'adamw', 'sgd']"
+                f"{self.optimizer} is not an available optimizer. Should be one of ['adam', 'adamw', 'sgd', 'deepEns']"
             )
 
         # Initialize learning rate scheduler

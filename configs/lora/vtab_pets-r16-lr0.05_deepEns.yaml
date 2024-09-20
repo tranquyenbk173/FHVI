@@ -6,7 +6,7 @@ trainer:
     init_args:
       save_dir: output
       name: pets-lora-r8-lr-0.15_deepEns_4
-  max_epochs: 200
+  max_epochs: 150
   # max_steps: 10000
   val_check_interval: 50
   num_sanity_val_steps: 0
