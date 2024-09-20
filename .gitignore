@@ -3,7 +3,8 @@ output/
 things/
 weights/
 notebooks/
-
+sbatch_results/
+saved_checkpoints/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

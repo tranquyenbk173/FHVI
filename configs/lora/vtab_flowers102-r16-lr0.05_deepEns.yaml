@@ -1,4 +1,3 @@
-# pytorch_lightning==2.0.2
 trainer:
   accelerator: gpu
   devices: 1
@@ -6,8 +5,8 @@ trainer:
     class_path: pytorch_lightning.loggers.CSVLogger
     init_args:
       save_dir: output
-      name: cifar100-lora-r8-lr-0.15_deepEns_4
-  max_epochs: 500
+      name: flowers102-lora-r8-lr-0.15_deepEns_4
+  max_epochs: 300
   # max_steps: 10000
   val_check_interval: 50
   num_sanity_val_steps: 0
@@ -26,14 +25,11 @@ model:
   epsilon: 0.01
   use_sam: False
 data:
-  dataset: cifar100
-  root: ../cifar100/
+  dataset: flowers102
+  root: ../vtab-1k/oxford_flowers102
   size: 224
   batch_size: 24
   workers: 4
 model_checkpoint:
   dirpath: saved_checkpoints
   filename: best-step-{step}-{val_acc:.4f}
-  monitor: val_acc
-  mode: max
-  save_last: true
