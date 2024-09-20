@@ -526,6 +526,147 @@ class SVGD(torch.optim.Adam):
                                     p.data = clsB[layer_id][net_id].view(p.data.shape) + self.lr * grad_clsB[layer_id][net_id].view(p.data.shape)
         
     
+
+    def first_step(self, zero_grad=False):
+        # get grad (1)
+        q_A_grad, q_B_grad, v_A_grad, v_B_grad, clsW_grad, clsB_grad = self.get_grad1() #dlog_prob(X)'
+        
+        
+        # update perturbed weights
+        updated_n = []
+        
+        for net_id in range(self.num_particles):
+            for layer_id in range(12):   
+                for n, p in self.net.lora_vit.named_parameters():
+                    
+                    if p.requires_grad and n not in updated_n: 
+                    
+                        if f'blocks.{str(layer_id)}' in n:
+                            # print('B-name', n)
+                            if "proj_q" in n:
+                                if f"w_a.layer.{net_id}" in n:
+                                    # print(n)
+                                    updated_n.append(n)
+                                    self.state[p]['old_p'] = p.data.clone()
+
+                                    grad_n = torch.nn.functional.normalize(q_A_grad[layer_id][net_id],  p=2, dim=0)
+                                    p.data = p.data + self.lr2 * grad_n.view(p.data.shape)
+                                elif f"w_b.layer.{net_id}" in n:
+                                    # print(n)
+                                    updated_n.append(n)
+                                    self.state[p]['old_p'] = p.data.clone()
+
+                                    grad_n = torch.nn.functional.normalize(q_B_grad[layer_id][net_id],  p=2, dim=0)
+                                    p.data = p.data + self.lr2 * grad_n.view(p.data.shape)
+                                    # p.data = p.data + self.lr * q_B_grad[layer_id][net_id].view(p.data.shape)
+                            elif "proj_v" in n:
+                                if f"w_a.layer.{net_id}" in n:
+                                    # print(n)
+                                    updated_n.append(n)
+
+                                    self.state[p]['old_p'] = p.data.clone()
+                                    grad_n = torch.nn.functional.normalize(v_A_grad[layer_id][net_id],  p=2, dim=0)
+                                    p.data = p.data + self.lr2 * grad_n.view(p.data.shape)
+                                    # p.data = p.data + self.lr * v_A_grad[layer_id][net_id].view(p.data.shape)
+                                elif f"w_b.layer.{net_id}" in n:
+                                    # print(n)
+                                    updated_n.append(n)
+
+                                    self.state[p]['old_p'] = p.data.clone()
+                                    grad_n = torch.nn.functional.normalize(v_B_grad[layer_id][net_id],  p=2, dim=0)
+                                    p.data = p.data + self.lr2 * grad_n.view(p.data.shape)
+                                    # p.data = p.data + self.lr2 * v_B_grad[layer_id][net_id].view(p.data.shape)
+                                    
+                        elif 'fc' in n:
+                            if 'weight' in n:
+                                if f"layer.{net_id}" in n:
+                                    # print(n)
+                                    updated_n.append(n)
+
+                                    self.state[p]['old_p'] = p.data.clone()
+                                    grad_n = torch.nn.functional.normalize(clsW_grad[layer_id][net_id],  p=2, dim=0)
+                                    p.data = p.data + self.lr2 * grad_n.view(p.data.shape)
+                                    # p.data = temp_w + self.lr * clsW_grad[layer_id][net_id].view(p.data.shape)
+                            elif 'bias' in n and f"layer.{net_id}" in n:
+                                    # print(n)
+                                    updated_n.append(n)
+
+                                    self.state[p]['old_p'] = p.data.clone()
+                                    grad_n = torch.nn.functional.normalize(clsB_grad[layer_id][net_id],  p=2, dim=0)
+                                    p.data = p.data + self.lr2 * grad_n.view(p.data.shape)
+                                    # p.data = temp_w + self.lr * clsB_grad[layer_id][net_id].view(p.data.shape)
+                                    
+    
+
+        if zero_grad:
+            self.zero_grad()
+    def second_step(self, zero_grad=False):
+        """Second step: Restore original parameters and apply the gradient update."""
+
+        updated_n = set()  # Track which parameters have been restored
+
+
+        for net_id in range(self.num_particles):
+            for layer_id in range(12):  # Assuming 12 layers
+                for n, p in self.net.lora_vit.named_parameters():
+                    if p.requires_grad and n not in updated_n:
+                        # Restore the original parameters for each particle and layer
+
+                        if f'blocks.{str(layer_id)}' in n:
+                            if "proj_q" in n:
+                                if f"w_a.layer.{net_id}" in n:
+                                    
+                                    p.data = self.state[p]['old_p']
+
+
+
+                                elif f"w_b.layer.{net_id}" in n:
+
+                                    p.data = self.state[p]['old_p']
+
+
+                            elif "proj_v" in n:
+                                if f"w_a.layer.{net_id}" in n:
+
+                                    p.data = self.state[p]['old_p']
+
+
+
+                                elif f"w_b.layer.{net_id}" in n:
+
+                                    p.data = self.state[p]['old_p']
+
+
+
+
+
+
+                        elif 'fc' in n:
+                            if 'weight' in n:
+
+                                p.data = self.state[p]['old_p']
+
+
+
+
+                            elif 'bias' in n:
+
+                                p.data = self.state[p]['old_p']
+
+
+
+                        # Mark this parameter as updated
+                        updated_n.add(n)
+
+
+        self.base_optimizer.step()
+
+
+        if zero_grad:
+            self.zero_grad()
+
+    
+
     def score_func(self):
         q_A_grad, q_B_grad, v_A_grad, v_B_grad, clsW_grad, clsB_grad = self.get_grad1() #dlog_prob(X)'
         

@@ -466,6 +466,32 @@ class ClassificationModel(pl.LightningModule):
             
             if self.global_step > self.start_swag_step and (self.global_step + 1 - self.start_swag_step) % self.swa_freq == 0:
                 self.swag.collect_model(self.net)
+
+        elif self.optimizer == 'flat_seeking':
+            self.log("lr", self.trainer.optimizers[0].param_groups[0]["lr"], prog_bar=True)
+            opt = self.optimizers()
+            scheduler = self.lr_schedulers()
+            torch.autograd.set_detect_anomaly(True)
+            loss = self.shared_step(batch, "train")
+                
+
+            opt.zero_grad()
+            self.manual_backward(loss)
+            opt.first_step(zero_grad= True)
+            
+            loss = self.shared_step(batch, "train")
+
+            self.manual_backward(loss)
+            opt.second_step(zero_grad= True)
+
+
+            opt.zero_grad()
+            scheduler.step()
+
+
+            
+            if self.global_step > self.start_swag_step and (self.global_step + 1 - self.start_swag_step) % self.swa_freq == 0:
+                self.swag.collect_model(self.net)
                 
                 
         else:
