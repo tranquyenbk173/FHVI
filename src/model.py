@@ -261,7 +261,7 @@ class ClassificationModel(pl.LightningModule):
                     task="multiclass",
                     top_k=min(5, self.n_classes),
                 ),
-                # "ece": CalibrationError(num_classes=self.n_classes, norm='l1')
+                "ece": CalibrationError(num_classes=self.n_classes, norm='l1')
             }
         )
         self.val_metrics = MetricCollection(
@@ -272,7 +272,7 @@ class ClassificationModel(pl.LightningModule):
                     task="multiclass",
                     top_k=min(5, self.n_classes),
                 ),
-                # "ece": CalibrationError(num_classes=self.n_classes, norm='l1')
+                "ece": CalibrationError(num_classes=self.n_classes, norm='l1')
             }
         )
         self.test_metrics = MetricCollection(
@@ -283,7 +283,7 @@ class ClassificationModel(pl.LightningModule):
                     task="multiclass",
                     top_k=min(5, self.n_classes),
                 ),
-                # "ece": CalibrationError(num_classes=self.n_classes, norm='l1'),
+                "ece": CalibrationError(num_classes=self.n_classes, norm='l1'),
                 "stats": StatScores(
                     task="multiclass", average=None, num_classes=self.n_classes
                 ),
@@ -458,7 +458,7 @@ class ClassificationModel(pl.LightningModule):
             self.swag.sample(0.0)
             bn_update(batch, self.swag)
         val = self.shared_step(batch, "val")
-        # self.test_step(batch, _)
+        self.test_step(batch, _)
         return val
     
     def on_validation_epoch_end(self):
