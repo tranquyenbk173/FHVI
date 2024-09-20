@@ -68,7 +68,7 @@ class RBF(torch.nn.Module):
   
 
 class SVGD(torch.optim.Adam):
-    def __init__(self, param, rho, lr, betas, weight_decay, num_particles, train_module, net):
+    def __init__(self, param, rho, lr, betas, weight_decay, num_particles, train_module, net, use_sym_kl):
         super(SVGD, self).__init__(param, lr, betas, weight_decay)
         self.K = RBF()
         self.net = net
@@ -76,15 +76,7 @@ class SVGD(torch.optim.Adam):
         self.lr = lr
         self.lr2 = rho
         self.train_module = train_module
-        
-        # print(self.net)
-            
-        # self.based_optim = torch.optim.Adam(
-        #         params,
-        #         lr=lr,
-        #         betas=betas,
-        #         weight_decay=weight_decay,
-        #     )
+        self.use_sym_kl = use_sym_kl
         
     def get_learnable_block(self): #for LoRA        
         q_A = torch.empty(0).cuda()
@@ -303,11 +295,100 @@ class SVGD(torch.optim.Adam):
         clsB_gradK = clsB.grad
         
         return kernel_qA, kernel_qB, kernel_vA, kernel_vB, kernel_clsW, kernel_clsB, q_A_grad, q_B_grad, v_A_grad, v_B_grad, clsW_gradK, clsB_gradK
+     
+    def kl_divergence(p, q):
+        """Compute the KL divergence between two probability distributions."""
+        return torch.nn.functional.kl_div(p.log(), q, reduction='batchmean')
+    
+    def step1_symKL(self, grad_tuple, outputs):
+        # get grad (1)
+        q_A_grad, q_B_grad, v_A_grad, v_B_grad, clsW_grad, clsB_grad = grad_tuple
+        
+        # get org_weight
+        self.zero_grad()
+        q_A, q_B, v_A, v_B, clsW, clsB = self.get_learnable_block()
+        q_A, q_B, v_A, v_B, clsW, clsB = q_A.clone().detach().requires_grad_(True), q_B.clone().detach().requires_grad_(True), v_A.clone().detach().requires_grad_(True), v_B.clone().detach().requires_grad_(True),  clsW.clone().detach().requires_grad_(True), clsB.clone().detach().requires_grad_(True)
+        org_weight_tuple = (q_A, q_B, v_A, v_B, clsW, clsB)
+        
+        # get kernel_grad        
+        if q_A.shape[0] > 0:
+            kernel_matrix = torch.zeros(size=(self.num_particles, self.num_particles)).cuda()
+            num_vectors = len(outputs)
+            for i in range(num_vectors):
+                for j in range(i + 1, num_vectors):
+                    kl_ij = kl_divergence(vectors[i], vectors[j])
+                    kl_ji = kl_divergence(vectors[j], vectors[i])
+                    sym_kl = (kl_ij + kl_ji)/2.0
+                    kernel_matrix[i][j] = kernel_matrix[j][i] = sym_kl
+                    
+            self.train_module.manual_backward(kernel_matrix.sum())
+            q_A_gradK, q_B_gradK, v_A_gradK, v_B_gradK, clsW_gradK, clsB_gradK = self.get_grad1()
+            kernel_qA, kernel_qB, kernel_vA, kernel_vB, kernel_clsW, kernel_clsB = kernel_matrix, kernel_matrix, kernel_matrix, kernel_matrix, kernel_matrix, kernel_matrix
+        else:
+            kernel_qA, kernel_qB, kernel_vA, kernel_vB, kernel_clsW, kernel_clsB, q_A_gradK, q_B_gradK, v_A_gradK, v_B_gradK, clsW_gradK, clsB_gradK = torch.ones(size=(q_A_grad.shape[0], q_A_grad.shape[0])).cuda(), torch.ones(size=(q_A_grad.shape[0], q_A_grad.shape[0])).cuda(), torch.ones(size=(q_A_grad.shape[0], q_A_grad.shape[0])).cuda(), torch.ones(size=(q_A_grad.shape[0], q_A_grad.shape[0])).cuda(), torch.ones(size=(q_A_grad.shape[0], q_A_grad.shape[0])).cuda(), torch.ones(size=(q_A_grad.shape[0], q_A_grad.shape[0])).cuda(), 0, 0, 0, 0, 0, 0
+    
+        kernel_tuple = (kernel_qA, kernel_qB, kernel_vA, kernel_vB, kernel_clsW, kernel_clsB, q_A_gradK, q_B_gradK, v_A_gradK, v_B_gradK, clsW_gradK, clsB_gradK)
+        
+        
+        # update perturbed weights
+        updated_n = []
+        
+        for net_id in range(self.num_particles):
+            for layer_id in range(12):   
+                for n, p in self.net.lora_vit.named_parameters():
+                    
+                    if p.requires_grad and n not in updated_n: 
+                    
+                        if f'blocks.{str(layer_id)}' in n:
+                            # print('B-name', n)
+                            if "proj_q" in n:
+                                if f"w_a.layer.{net_id}" in n:
+                                    # print(n)
+                                    updated_n.append(n)
+                                    # print(q_A_grad[layer_id][net_id].shape)
+                                    # exit()
+                                    grad_n = torch.nn.functional.normalize(q_A_grad[layer_id][net_id],  p=2, dim=0)
+                                    p.data = p.data + self.lr2 * grad_n.view(p.data.shape)
+                                elif f"w_b.layer.{net_id}" in n:
+                                    # print(n)
+                                    updated_n.append(n)
+                                    grad_n = torch.nn.functional.normalize(q_B_grad[layer_id][net_id],  p=2, dim=0)
+                                    p.data = p.data + self.lr2 * grad_n.view(p.data.shape)
+                                    # p.data = p.data + self.lr * q_B_grad[layer_id][net_id].view(p.data.shape)
+                            elif "proj_v" in n:
+                                if f"w_a.layer.{net_id}" in n:
+                                    # print(n)
+                                    updated_n.append(n)
+                                    grad_n = torch.nn.functional.normalize(v_A_grad[layer_id][net_id],  p=2, dim=0)
+                                    p.data = p.data + self.lr2 * grad_n.view(p.data.shape)
+                                    # p.data = p.data + self.lr * v_A_grad[layer_id][net_id].view(p.data.shape)
+                                elif f"w_b.layer.{net_id}" in n:
+                                    # print(n)
+                                    updated_n.append(n)
+                                    grad_n = torch.nn.functional.normalize(v_B_grad[layer_id][net_id],  p=2, dim=0)
+                                    p.data = p.data + self.lr2 * grad_n.view(p.data.shape)
+                                    # p.data = p.data + self.lr2 * v_B_grad[layer_id][net_id].view(p.data.shape)
+                                    
+                        elif 'fc' in n:
+                            if 'weight' in n:
+                                if f"layer.{net_id}" in n:
+                                    # print(n)
+                                    updated_n.append(n)
+                                    grad_n = torch.nn.functional.normalize(clsW_grad[layer_id][net_id],  p=2, dim=0)
+                                    p.data = p.data + self.lr2 * grad_n.view(p.data.shape)
+                                    # p.data = temp_w + self.lr * clsW_grad[layer_id][net_id].view(p.data.shape)
+                            elif 'bias' in n and f"layer.{net_id}" in n:
+                                    # print(n)
+                                    updated_n.append(n)
+                                    grad_n = torch.nn.functional.normalize(clsB_grad[layer_id][net_id],  p=2, dim=0)
+                                    p.data = p.data + self.lr2 * grad_n.view(p.data.shape)
+                                    # p.data = temp_w + self.lr * clsB_grad[layer_id][net_id].view(p.data.shape)
+                                    
+        return org_weight_tuple, kernel_tuple
         
     def step1(self):
         # get grad (1)
         q_A_grad, q_B_grad, v_A_grad, v_B_grad, clsW_grad, clsB_grad = self.get_grad1() #dlog_prob(X)'
-        # grad_tuple = (q_A_grad, q_B_grad, v_A_grad, v_B_grad, clsW_grad, clsB_grad)
         
         # get kerr
         self.zero_grad()

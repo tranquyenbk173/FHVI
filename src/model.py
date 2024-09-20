@@ -10,6 +10,8 @@ from peft import LoraConfig, get_peft_model
 from torch.optim import SGD, Adam, AdamW
 from .utils import SVGD, RBF
 from torch.optim.lr_scheduler import LambdaLR
+from torch.optim.swa_utils import AveragedModel, SWALR
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from torchmetrics import MetricCollection
 from torchmetrics.classification.accuracy import Accuracy
 from torchmetrics.classification import MulticlassCalibrationError as CalibrationError
@@ -82,8 +84,10 @@ class ClassificationModel(pl.LightningModule):
         epsilon: float = 0.01,
         cov_mat: bool = True,
         max_num_models: int = 20,
-        start_swag_step: int = 10000,
-        swa_freq: int = 10
+        start_swa_step: int = 10000,
+        swa_freq: int = 10,
+        use_swa_svgd: bool = False,
+        use_sym_kl: bool = False,
     ):
         """Classification Model
 
@@ -143,8 +147,10 @@ class ClassificationModel(pl.LightningModule):
         self.epsilon = epsilon
         self.cov_mat = cov_mat
         self.max_num_models = max_num_models
-        self.start_swag_step = start_swag_step
+        self.start_swag_step = start_swa_step
         self.swa_freq = swa_freq
+        self.use_swa_svgd =  use_swa_svgd
+        self.use_sym_kl = use_sym_kl
         # Initialize network
         try:
             model_path = MODEL_DICT[self.model_name]
@@ -213,6 +219,9 @@ class ClassificationModel(pl.LightningModule):
             else: #init multiple net @@ corresponding to different particles
                 
                 self.net = LoRA_ViT(num_particles=self.num_particles, vit_model=self.net, r=self.lora_r, alpha=self.lora_alpha, num_classes=self.n_classes)
+                if self.optimizer == 'svgd' and self.use_swa_svgd:
+                    self.swa_model = AveragedModel(self.net)
+                    
                 if self.optimizer == 'SWAG':
                     self.swag = SWAG(base=self.net,no_cov_mat=not self.cov_mat, max_num_models=self.max_num_models)
                 
@@ -414,16 +423,35 @@ class ClassificationModel(pl.LightningModule):
 
             # for sam
             if self.use_sam:
-                
-                org_weight_tuple, kernel_tuple = opt.step1()
-                loss = self.shared_step(batch, "train")
-                opt.zero_grad()
-                self.manual_backward(loss)
-                opt.step2(org_weight_tuple, kernel_tuple)
+                if not self.use_sym_kl:
+                    org_weight_tuple, kernel_tuple = opt.step1()
+                    loss = self.shared_step(batch, "train")
+                    opt.zero_grad()
+                    self.manual_backward(loss)
+                    opt.step2(org_weight_tuple, kernel_tuple)
+                else:
+                    # get grad of logP (org model)
+                    grad_tuple = opt.get_grad1()
+                    
+                    # get grad of sym_kernel (org model)
+                    outputs = self(batch) # list of outputs of particles
+                    org_weight_tuple, kernel_tuple = opt.step1_symKL(grad_tuple, outputs)
+                    
+                    # real update..
+                    loss = self.shared_step(batch, "train")
+                    opt.zero_grad()
+                    self.manual_backward(loss)
+                    opt.step2(org_weight_tuple, kernel_tuple)
+                    
             else:
                 opt.step_()
             opt.zero_grad()
-            scheduler.step()
+            
+            if self.global_step > self.start_swag_step and (self.global_step + 1 - self.start_swag_step) % self.swa_freq == 0:
+                self.swa_model.update_parameters(self.net)
+                self.swa_scheduler.step()
+            else:
+                scheduler.step()
             # return loss
         elif self.optimizer == 'SWAG':
             self.log("lr", self.trainer.optimizers[0].param_groups[0]["lr"], prog_bar=True)
@@ -457,6 +485,9 @@ class ClassificationModel(pl.LightningModule):
         if self.optimizer == 'SWAG':
             self.swag.sample(0.0)
             bn_update(batch, self.swag)
+            
+        elif self.optimizer == 'svgd' and self.use_swa_svgd:
+            torch.optim.swa_utils.update_bn(batch, self.swa_model)
         val = self.shared_step(batch, "val")
         # self.test_step(batch, _)
         return val
@@ -520,14 +551,17 @@ class ClassificationModel(pl.LightningModule):
             )
         elif self.optimizer == "svgd":  #use Adam as the base optimizer by default @@        
             optimizer =  SVGD(param = self.net.parameters(), rho=self.rho, lr=self.lr, betas=self.betas,
-                weight_decay=self.weight_decay, num_particles=self.num_particles, train_module=self, net=self.net)
+                weight_decay=self.weight_decay, num_particles=self.num_particles, train_module=self, net=self.net, use_sym_kl=self.use_sym_kl)
         else:
             raise ValueError(
                 f"{self.optimizer} is not an available optimizer. Should be one of ['adam', 'adamw', 'sgd']"
             )
 
         # Initialize learning rate scheduler
-        if self.scheduler == "cosine":
+        if self.optimizer == 'svgd' and self.use_swa_svgd:
+            scheduler = CosineAnnealingLR(optimizer, T_max=100)
+            self.swa_scheduler = SWALR(optimizer, swa_lr=0.05)
+        elif self.scheduler == "cosine":
             scheduler = get_cosine_schedule_with_warmup(
                 optimizer,
                 num_training_steps=int(self.trainer.estimated_stepping_batches),
@@ -535,6 +569,7 @@ class ClassificationModel(pl.LightningModule):
             )
         elif self.scheduler == "none":
             scheduler = LambdaLR(optimizer, lambda _: 1)
+            
         else:
             raise ValueError(
                 f"{self.scheduler} is not an available optimizer. Should be one of ['cosine', 'none']"
