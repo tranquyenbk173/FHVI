@@ -96,7 +96,7 @@ DATASET_DICT = {
         partial(SUN397, split="train", download=True),
         partial(SUN397, split="test", download=True),
         partial(SUN397, split="test", download=True),
-        10,
+        397,
     ],
     "patch_camelyon": [
         partial(SUN397, split="train", download=True),
