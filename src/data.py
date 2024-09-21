@@ -6,6 +6,7 @@ import torch.utils.data as data
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader
 from torchvision import transforms
+
 from torchvision.datasets import (
     CIFAR10,
     CIFAR100,
@@ -20,7 +21,7 @@ from torchvision.datasets import (
     Caltech101,
     SVHN,
     SUN397,
-    
+    EuroSAT,    
 )
 
 from PIL import Image
@@ -98,11 +99,66 @@ DATASET_DICT = {
         partial(SUN397, split="test", download=True),
         397,
     ],
+
     "patch_camelyon": [
         partial(SUN397, split="train", download=True),
         partial(SUN397, split="test", download=True),
         partial(SUN397, split="test", download=True),
         2
+    ],
+    "eurosat": [
+        partial(EuroSAT, split="train", download=True),
+        partial(EuroSAT, split="test", download=True),
+        partial(EuroSAT, split="test", download=True),
+        10
+    ],
+    "resisc45": [
+        partial(SUN397, split="train", download=True),
+        partial(SUN397, split="test", download=True),
+        partial(SUN397, split="test", download=True),
+        45,
+    ],
+    "retinopathy": [
+        partial(SUN397, split="train", download=True),
+        partial(SUN397, split="test", download=True),
+        partial(SUN397, split="test", download=True),
+        5,
+    ],
+    "clevrcount": [
+        partial(SUN397, split="train", download=True),
+        partial(SUN397, split="test", download=True),
+        partial(SUN397, split="test", download=True),
+        8,
+    ],
+    "clevrdist": [
+        partial(SUN397, split="train", download=True),
+        partial(SUN397, split="test", download=True),
+        partial(SUN397, split="test", download=True),
+        6,
+    ],
+    "dmlab": [
+        partial(SUN397, split="train", download=True),
+        partial(SUN397, split="test", download=True),
+        partial(SUN397, split="test", download=True),
+        6,
+    ],
+    "kitti": [
+        partial(SUN397, split="train", download=True),
+        partial(SUN397, split="test", download=True),
+        partial(SUN397, split="test", download=True),
+        4,
+    ],
+    "dsprites_loc": [
+        partial(SUN397, split="train", download=True),
+        partial(SUN397, split="test", download=True),
+        partial(SUN397, split="test", download=True),
+        16,
+    ],
+    "dsprites_ori": [
+        partial(SUN397, split="train", download=True),
+        partial(SUN397, split="test", download=True),
+        partial(SUN397, split="test", download=True),
+        16,
     ],
     
 }
