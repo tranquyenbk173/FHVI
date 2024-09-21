@@ -522,6 +522,10 @@ class ClassificationModel(pl.LightningModule):
         test_dataloader = self.trainer.datamodule.test_dataloader()
         for batch in test_dataloader:
             self.test_step(batch, 0)
+
+    def on_validation_epoch_start(self):
+        # Reset calibration metric at the start of each validation epoch
+        self.val_metrics["ece"].reset()
             
     def test_step(self, batch, _):
         return self.shared_step(batch, "test")
@@ -543,6 +547,11 @@ class ClassificationModel(pl.LightningModule):
         df = pd.DataFrame(per_class_acc, columns=["acc", "n"])
         df.to_csv("per-class-acc-test.csv")
         print("Saved per-class results in per-class-acc-test.csv")
+
+
+    def on_test_epoch_start(self):
+        # Reset calibration metric at the start of each validation epoch
+        self.val_metrics["ece"].reset()
 
     def configure_optimizers(self):
         # Initialize optimizer
