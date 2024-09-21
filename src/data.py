@@ -160,6 +160,20 @@ DATASET_DICT = {
         partial(SUN397, split="test", download=True),
         16,
     ],
+
+    "smallnorb_azi": [
+        partial(SUN397, split="train", download=True),
+        partial(SUN397, split="test", download=True),
+        partial(SUN397, split="test", download=True),
+        18,
+    ],
+
+    "smallnorb_ele": [
+        partial(SUN397, split="train", download=True),
+        partial(SUN397, split="test", download=True),
+        partial(SUN397, split="test", download=True),
+        9,
+    ],
     
 }
 
