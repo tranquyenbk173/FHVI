@@ -29,7 +29,7 @@ data:
   dataset: cifar100
   root: ../cifar100/
   size: 224
-  batch_size: 4
+  batch_size: 16
   workers: 4
 model_checkpoint:
   dirpath: saved_checkpoints
