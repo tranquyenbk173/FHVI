@@ -230,7 +230,7 @@ class DataModule(pl.LightningDataModule):
         use_trivial_aug: bool = False,
         mean: Sequence = (0.5, 0.5, 0.5),
         std: Sequence = (0.5, 0.5, 0.5),
-        batch_size: int = 8,
+        batch_size: int = 32,
         workers: int = 4,
     ):
         """Classification Datamodule

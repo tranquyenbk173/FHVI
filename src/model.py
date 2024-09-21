@@ -270,7 +270,7 @@ class ClassificationModel(pl.LightningModule):
                     task="multiclass",
                     top_k=min(5, self.n_classes),
                 ),
-                "ece": CalibrationError(num_classes=self.n_classes, norm='l1')
+                "ece": CalibrationError(num_classes=self.n_classes, norm='l1').to("cpu")
             }
         )
         self.val_metrics = MetricCollection(
@@ -281,7 +281,7 @@ class ClassificationModel(pl.LightningModule):
                     task="multiclass",
                     top_k=min(5, self.n_classes),
                 ),
-                "ece": CalibrationError(num_classes=self.n_classes, norm='l1')
+                "ece": CalibrationError(num_classes=self.n_classes, norm='l1').to("cpu")
             }
         )
         self.test_metrics = MetricCollection(
@@ -292,7 +292,7 @@ class ClassificationModel(pl.LightningModule):
                     task="multiclass",
                     top_k=min(5, self.n_classes),
                 ),
-                "ece": CalibrationError(num_classes=self.n_classes, norm='l1'),
+                "ece": CalibrationError(num_classes=self.n_classes, norm='l1').to("cpu"),
                 "stats": StatScores(
                     task="multiclass", average=None, num_classes=self.n_classes
                 ),
