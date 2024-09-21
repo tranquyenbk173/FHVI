@@ -28,7 +28,7 @@ data:
   dataset: dtd
   root: ../vtab-1k/dtd
   size: 224
-  batch_size: 24
+  batch_size: 8
   workers: 4
 model_checkpoint:
   dirpath: saved_checkpoints
