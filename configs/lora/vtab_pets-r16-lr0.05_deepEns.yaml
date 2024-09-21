@@ -28,7 +28,7 @@ data:
   dataset: pets37
   root: ../vtab-1k/oxford_iiit_pet
   size: 224
-  batch_size: 8
+  batch_size: 4
   workers: 4
 model_checkpoint:
   dirpath: saved_checkpoints
