@@ -28,7 +28,7 @@ data:
   dataset: smallnorb_ele
   root: ../vtab-1k/smallnorb_ele
   size: 224
-  batch_size: 8
+  batch_size: 24
   workers: 4
 model_checkpoint:
   dirpath: saved_checkpoints

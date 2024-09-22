@@ -28,7 +28,7 @@ data:
   dataset: flowers102
   root: ../vtab-1k/oxford_flowers102
   size: 224
-  batch_size: 4
+  batch_size: 24
   workers: 4
 model_checkpoint:
   dirpath: saved_checkpoints
