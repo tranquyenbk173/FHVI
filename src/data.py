@@ -360,7 +360,7 @@ class DataModule(pl.LightningDataModule):
                 # self.val_dataset = self.val_dataset_fn(
                 #     self.root, transform=self.transforms_test, download=False
                 # )
-                self.train_dataset = ImageFilelist(root=self.root, flist=self.root + "/train800val200.txt",
+                self.train_dataset = ImageFilelist(root=self.root, flist=self.root + "/train800.txt",
                 transform=self.transforms_train)
                 self.val_dataset = ImageFilelist(root=self.root, flist=self.root + "/val200.txt",
                 transform=self.transforms_test)
