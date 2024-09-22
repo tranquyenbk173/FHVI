@@ -33,7 +33,7 @@ data:
   workers: 4
 model_checkpoint:
   dirpath: saved_checkpoints
-  filename: best-step-{step}-{val_acc:.4f}
+  filename: cifar100-step-{step}-{val_acc:.4f}
   monitor: val_acc
   mode: max
   save_last: true

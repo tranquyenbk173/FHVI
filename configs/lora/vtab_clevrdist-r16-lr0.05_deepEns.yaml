@@ -32,4 +32,4 @@ data:
   workers: 4
 model_checkpoint:
   dirpath: saved_checkpoints
-  filename: best-step-{step}-{val_acc:.4f}
+  filename: clevrdist-step-{step}-{val_acc:.4f}
