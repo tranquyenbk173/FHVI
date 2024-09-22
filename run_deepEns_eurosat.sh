@@ -1,6 +1,6 @@
 #!/bin/bash -e
 
-#SBATCH --job-name=cifar100 # create a short name for your job
+#SBATCH --job-name=eurosat # create a short name for your job
 #SBATCH --output=/lustre/scratch/client/vinai/users/quanpn2/Bayesian_finetuning/sbatch_results/mbpp%A.out # create a output file
 #SBATCH --error=/lustre/scratch/client/vinai/users/quanpn2/Bayesian_finetuning/sbatch_results/mbpp%A.err # create a error file
 #SBATCH --partition=research # choose partition
