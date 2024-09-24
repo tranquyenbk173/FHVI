@@ -5,31 +5,37 @@ trainer:
   logger:
     class_path: pytorch_lightning.loggers.CSVLogger
     init_args:
-      save_dir: output
-      name: pets-lora-r8-lr-0.15_rho-0.03_1p_bs64_F
-  max_epochs: 200
+      save_dir: output/sgd/
+      name: eurosat-r16-lr-0.1-SGD_tmux-[9]
+  max_epochs: 150
   # max_steps: 10000
-  val_check_interval: 30
+  val_check_interval: 50
+  num_sanity_val_steps: 0
 model:
-  model_name: vit-b16-224-in21k
+  model_name: vit-b16-224-dino
   training_mode: lora
   optimizer: svgd
-  rho: 0.03
-  lr: 0.15
+  lr: 0.1
   momentum: 0.9
   weight_decay: 0.0
   scheduler: cosine
   warmup_steps: 500
+  rho: 0
   lora_r: 8
   lora_alpha: 8
-  num_particles: 4
+  num_particles: 1
+  cov_mat: False
+  max_num_models: 20
   use_sam: True
-  
+  start_swa_step: 200
+  swa_freq: 5
+  use_swa_svgd: False 
+  use_sym_kl: False
 data:
-  dataset: pets37
-  root: ../Z.Data/vtab-1k/oxford_iiit_pet/
+  dataset: eurosat
+  root: ../Z.Data/vtab-1k/eurosat
   size: 224
-  batch_size: 64
+  batch_size: 32
   workers: 4
 model_checkpoint:
   dirpath: saved_checkpoints

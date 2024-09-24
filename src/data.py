@@ -22,6 +22,7 @@ from torchvision.datasets import (
     SVHN,
     SUN397,
     EuroSAT,
+    ImageFolder
 )
 
 from PIL import Image
@@ -97,12 +98,12 @@ DATASET_DICT = {
         partial(SUN397, split="train", download=True),
         partial(SUN397, split="test", download=True),
         partial(SUN397, split="test", download=True),
-        10,
+        397,
     ],
     "patch_camelyon": [
-        partial(SUN397, split="train", download=True),
-        partial(SUN397, split="test", download=True),
-        partial(SUN397, split="test", download=True),
+        partial(ImageFolder, split="train", download=True),
+        partial(ImageFolder, split="test", download=True),
+        partial(ImageFolder, split="test", download=True),
         2
     ],
     "eurosat": [
@@ -112,52 +113,64 @@ DATASET_DICT = {
         10
     ],
     "resisc45": [
-        partial(SUN397, split="train", download=True),
-        partial(SUN397, split="test", download=True),
-        partial(SUN397, split="test", download=True),
+        partial(ImageFolder, split="train", download=True),
+        partial(ImageFolder, split="test", download=True),
+        partial(ImageFolder, split="test", download=True),
         45,
     ],
     "retinopathy": [
-        partial(SUN397, split="train", download=True),
-        partial(SUN397, split="test", download=True),
-        partial(SUN397, split="test", download=True),
+        partial(ImageFolder, split="train", download=True),
+        partial(ImageFolder, split="test", download=True),
+        partial(ImageFolder, split="test", download=True),
         5,
     ],
     "clevrcount": [
-        partial(SUN397, split="train", download=True),
-        partial(SUN397, split="test", download=True),
-        partial(SUN397, split="test", download=True),
+        partial(ImageFolder, split="train", download=True),
+        partial(ImageFolder, split="test", download=True),
+        partial(ImageFolder, split="test", download=True),
         8,
     ],
     "clevrdist": [
-        partial(SUN397, split="train", download=True),
-        partial(SUN397, split="test", download=True),
-        partial(SUN397, split="test", download=True),
+        partial(ImageFolder, split="train", download=True),
+        partial(ImageFolder, split="test", download=True),
+        partial(ImageFolder, split="test", download=True),
         6,
     ],
     "dmlab": [
-        partial(SUN397, split="train", download=True),
-        partial(SUN397, split="test", download=True),
-        partial(SUN397, split="test", download=True),
+        partial(ImageFolder, split="train", download=True),
+        partial(ImageFolder, split="test", download=True),
+        partial(ImageFolder, split="test", download=True),
         6,
     ],
     "kitti": [
-        partial(SUN397, split="train", download=True),
-        partial(SUN397, split="test", download=True),
-        partial(SUN397, split="test", download=True),
+        partial(ImageFolder, split="train", download=True),
+        partial(ImageFolder, split="test", download=True),
+        partial(ImageFolder, split="test", download=True),
         4,
     ],
     "dsprites_loc": [
-        partial(SUN397, split="train", download=True),
-        partial(SUN397, split="test", download=True),
-        partial(SUN397, split="test", download=True),
+        partial(ImageFolder, split="train", download=True),
+        partial(ImageFolder, split="test", download=True),
+        partial(ImageFolder, split="test", download=True),
         16,
     ],
     "dsprites_ori": [
-        partial(SUN397, split="train", download=True),
-        partial(SUN397, split="test", download=True),
-        partial(SUN397, split="test", download=True),
+        partial(ImageFolder, split="train", download=True),
+        partial(ImageFolder, split="test", download=True),
+        partial(ImageFolder, split="test", download=True),
         16,
+    ],
+    "smallnorb_azi": [
+        partial(ImageFolder, split="train", download=True),
+        partial(ImageFolder, split="test", download=True),
+        partial(ImageFolder, split="test", download=True),
+        18,
+    ],
+    "smallnorb_ele": [
+        partial(ImageFolder, split="train", download=True),
+        partial(ImageFolder, split="test", download=True),
+        partial(ImageFolder, split="test", download=True),
+        9,
     ],
 }
 

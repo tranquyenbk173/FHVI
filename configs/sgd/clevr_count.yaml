@@ -5,31 +5,35 @@ trainer:
   logger:
     class_path: pytorch_lightning.loggers.CSVLogger
     init_args:
-      save_dir: output
-      name: pets-lora-r8-lr-0.15_rho-0.03_1p_bs64_F
-  max_epochs: 200
-  # max_steps: 10000
-  val_check_interval: 30
+      save_dir: output/sgd/
+      name: clevrcount-bsz-24-r8-lr-0.1_tmux-[15]  
+  max_epochs: 150
+  val_check_interval: 50
+  num_sanity_val_steps: 0
 model:
-  model_name: vit-b16-224-in21k
+  model_name: vit-b16-224-dino
   training_mode: lora
   optimizer: svgd
-  rho: 0.03
-  lr: 0.15
+  lr: 0.01
   momentum: 0.9
-  weight_decay: 0.0
+  weight_decay: 1e-4
   scheduler: cosine
   warmup_steps: 500
   lora_r: 8
   lora_alpha: 8
-  num_particles: 4
+  num_particles: 1
+  cov_mat: True
+  max_num_models: 20
   use_sam: True
-  
+  start_swa_step: 200
+  swa_freq: 1
+  use_swa_svgd: False
+  use_sym_kl: False
 data:
-  dataset: pets37
-  root: ../Z.Data/vtab-1k/oxford_iiit_pet/
+  dataset: clevrcount
+  root: ../Z.Data/vtab-1k/clevr_count
   size: 224
-  batch_size: 64
+  batch_size: 24
   workers: 4
 model_checkpoint:
   dirpath: saved_checkpoints

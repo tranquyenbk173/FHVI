@@ -6,7 +6,7 @@ trainer:
     class_path: pytorch_lightning.loggers.CSVLogger
     init_args:
       save_dir: output
-      name: svhn-lora-r8-lr-0.15_rho-0.03_1p_bs24_F
+      name: svhn-lora-r8-lr-0.15_rho-0.03_4p_bs24_F_weightdecay_1e-4_Tuan
   max_epochs: 100
   # max_steps: 10000
   val_check_interval: 30
@@ -17,7 +17,7 @@ model:
   rho: 0.03
   lr: 0.15
   momentum: 0.9
-  weight_decay: 0.0
+  weight_decay: 1e-4
   scheduler: cosine
   warmup_steps: 500
   lora_r: 8
