@@ -68,9 +68,9 @@ class RBF(torch.nn.Module):
   
 
 class SVGD(torch.optim.Adam):
-    def __init__(self, param, rho, lr, betas, weight_decay, num_particles, train_module, net, use_sym_kl):
-        super(SVGD, self).__init__(param, lr, betas, weight_decay)
-        self.K = RBF()
+    def __init__(self, param, rho, lr, betas, weight_decay, num_particles, train_module, net, use_sym_kl, sigma):
+        super(SVGD, self).__init__(param, lr, betas, weight_decay, sigma)
+        self.K = RBF(sigma=sigma)
         self.net = net
         self.num_particles = num_particles
         self.lr = lr

@@ -2,6 +2,7 @@ import os
 from functools import partial
 from typing import Optional, Sequence
 import torch.utils.data as data
+from timm.data import create_transform
 
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader
@@ -20,7 +21,7 @@ from torchvision.datasets import (
     Caltech101,
     SVHN,
     SUN397,
-    
+    EuroSAT,
 )
 
 from PIL import Image
@@ -104,7 +105,60 @@ DATASET_DICT = {
         partial(SUN397, split="test", download=True),
         2
     ],
-    
+    "eurosat": [
+        partial(EuroSAT, split="train", download=True),
+        partial(EuroSAT, split="test", download=True),
+        partial(EuroSAT, split="test", download=True),
+        10
+    ],
+    "resisc45": [
+        partial(SUN397, split="train", download=True),
+        partial(SUN397, split="test", download=True),
+        partial(SUN397, split="test", download=True),
+        45,
+    ],
+    "retinopathy": [
+        partial(SUN397, split="train", download=True),
+        partial(SUN397, split="test", download=True),
+        partial(SUN397, split="test", download=True),
+        5,
+    ],
+    "clevrcount": [
+        partial(SUN397, split="train", download=True),
+        partial(SUN397, split="test", download=True),
+        partial(SUN397, split="test", download=True),
+        8,
+    ],
+    "clevrdist": [
+        partial(SUN397, split="train", download=True),
+        partial(SUN397, split="test", download=True),
+        partial(SUN397, split="test", download=True),
+        6,
+    ],
+    "dmlab": [
+        partial(SUN397, split="train", download=True),
+        partial(SUN397, split="test", download=True),
+        partial(SUN397, split="test", download=True),
+        6,
+    ],
+    "kitti": [
+        partial(SUN397, split="train", download=True),
+        partial(SUN397, split="test", download=True),
+        partial(SUN397, split="test", download=True),
+        4,
+    ],
+    "dsprites_loc": [
+        partial(SUN397, split="train", download=True),
+        partial(SUN397, split="test", download=True),
+        partial(SUN397, split="test", download=True),
+        16,
+    ],
+    "dsprites_ori": [
+        partial(SUN397, split="train", download=True),
+        partial(SUN397, split="test", download=True),
+        partial(SUN397, split="test", download=True),
+        16,
+    ],
 }
 
 def default_loader(path):
@@ -162,6 +216,7 @@ class DataModule(pl.LightningDataModule):
         std: Sequence = (0.5, 0.5, 0.5),
         batch_size: int = 32,
         workers: int = 4,
+        train_aug=False
     ):
         """Classification Datamodule
 
@@ -199,6 +254,7 @@ class DataModule(pl.LightningDataModule):
         self.std = std
         self.batch_size = batch_size
         self.workers = workers
+        self.train_aug = train_aug
 
         # Define dataset
         if self.dataset == "custom":
@@ -233,8 +289,34 @@ class DataModule(pl.LightningDataModule):
                 raise ValueError(
                     f"{dataset} is not an available dataset. Should be one of {[k for k in DATASET_DICT.keys()]}"
                 )
+            
+        if self.train_aug:
+            aug_transform = create_transform(
+                    input_size=(224, 224),
+                    is_training=True,
+                    color_jitter=0.4,
+                    auto_augment='rand-m9-mstd0.5-inc1',
+                    re_prob=0.0,
+                    re_mode='pixel',
+                    re_count=1,
+                    interpolation='bicubic',
+                )
+            aug_transform.transforms[0] = transforms.Resize((224, 224), interpolation=3)
+        else:
+            aug_transform = None
 
-        self.transforms_train = transforms.Compose(
+        print(aug_transform)
+
+        transform = transforms.Compose([
+                transforms.Resize((224, 224)),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+        
+        #normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        self.transforms_train = aug_transform if aug_transform else transform
+        self.transforms_test = transform
+
+        """ self.transforms_train = transforms.Compose(
             [
                 transforms.RandomResizedCrop(
                     (self.size, self.size),
@@ -245,7 +327,8 @@ class DataModule(pl.LightningDataModule):
                 if self.use_trivial_aug
                 else transforms.RandAugment(self.rand_aug_n, self.rand_aug_m),
                 transforms.ToTensor(),
-                transforms.Normalize(mean=self.mean, std=self.std),
+                #transforms.Normalize(mean=self.mean, std=self.std),
+                normalize,
                 transforms.RandomErasing(p=self.erase_prob),
             ]
         )
@@ -255,9 +338,10 @@ class DataModule(pl.LightningDataModule):
                     (self.size, self.size),
                 ),
                 transforms.ToTensor(),
-                transforms.Normalize(mean=self.mean, std=self.std),
+                normalize,
+                #transforms.Normalize(mean=self.mean, std=self.std),
             ]
-        )
+        ) """
 
     def prepare_data(self):
         if self.dataset != "custom":
@@ -310,8 +394,6 @@ class DataModule(pl.LightningDataModule):
                 # )
                 self.test_dataset = ImageFilelist(root=self.root, flist=self.root + "/test.txt",
                 transform=self.transforms_test)
-
-            
 
     def train_dataloader(self):
         return DataLoader(

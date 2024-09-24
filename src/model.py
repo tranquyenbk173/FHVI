@@ -88,6 +88,7 @@ class ClassificationModel(pl.LightningModule):
         swa_freq: int = 10,
         use_swa_svgd: bool = False,
         use_sym_kl: bool = False,
+        sigma = 1
     ):
         """Classification Model
 
@@ -151,6 +152,7 @@ class ClassificationModel(pl.LightningModule):
         self.swa_freq = swa_freq
         self.use_swa_svgd =  use_swa_svgd
         self.use_sym_kl = use_sym_kl
+        self.sigma = sigma
         # Initialize network
         try:
             model_path = MODEL_DICT[self.model_name]
@@ -576,8 +578,18 @@ class ClassificationModel(pl.LightningModule):
                 weight_decay=self.weight_decay,
             )
         elif self.optimizer == "svgd":  #use Adam as the base optimizer by default @@        
-            optimizer =  SVGD(param = self.net.parameters(), rho=self.rho, lr=self.lr, betas=self.betas,
-                weight_decay=self.weight_decay, num_particles=self.num_particles, train_module=self, net=self.net, use_sym_kl=self.use_sym_kl)
+            optimizer =  SVGD(
+                param = self.net.parameters(), 
+                rho=self.rho,
+                sigma=self.sigma, 
+                lr=self.lr, 
+                betas=self.betas,
+                weight_decay=self.weight_decay, 
+                num_particles=self.num_particles, 
+                train_module=self, 
+                net=self.net, 
+                use_sym_kl=self.use_sym_kl
+                )
         else:
             raise ValueError(
                 f"{self.optimizer} is not an available optimizer. Should be one of ['adam', 'adamw', 'sgd', 'deepEns']"
