@@ -477,12 +477,12 @@ class ClassificationModel(pl.LightningModule):
 
             opt.zero_grad()
             self.manual_backward(loss)
-            opt.first_step(zero_grad= True)
+            opt.step1(zero_grad= True)
             
             loss = self.shared_step(batch, "train")
 
             self.manual_backward(loss)
-            opt.second_step(zero_grad= True)
+            opt.step2(zero_grad= True)
 
 
             opt.zero_grad()
@@ -576,7 +576,7 @@ class ClassificationModel(pl.LightningModule):
                 momentum=self.momentum,
                 weight_decay=self.weight_decay,
             )
-        elif self.optimizer == 'SWAG' or self.optimizer == 'flat_seeking' :
+        elif self.optimizer == 'SWAG' :
             # print(self.net.parameters())
             optimizer = SGD(
                 self.net.parameters(),
@@ -584,9 +584,16 @@ class ClassificationModel(pl.LightningModule):
                 momentum=self.momentum,
                 weight_decay=self.weight_decay,
             )
-        elif self.optimizer == "svgd":  #use Adam as the base optimizer by default @@        
-            optimizer =  SVGD(param = self.net.parameters(), rho=self.rho, lr=self.lr, betas=self.betas,
-                weight_decay=self.weight_decay, num_particles=self.num_particles, train_module=self, net=self.net, use_sym_kl=self.use_sym_kl)
+        elif self.optimizer == 'flat_seeking' :
+            base_optimizer = torch.optim.SGD
+
+            optimizer =  SVGD(param = self.net.parameters(),base_optimizer= base_optimizer, lr=self.lr, betas=self.betas,
+                weight_decay=self.weight_decay, num_particles=self.num_particles, train_module=self, net=self.net)
+
+
+        # elif self.optimizer == "svgd":  #use Adam as the base optimizer by default @@        
+        #     optimizer =  SVGD(param = self.net.parameters(), rho=self.rho, lr=self.lr, betas=self.betas,
+        #         weight_decay=self.weight_decay, num_particles=self.num_particles, train_module=self, net=self.net, use_sym_kl=self.use_sym_kl)
         else:
             raise ValueError(
                 f"{self.optimizer} is not an available optimizer. Should be one of ['adam', 'adamw', 'sgd', 'deepEns']"
