@@ -84,7 +84,7 @@ class ClassificationModel(pl.LightningModule):
         epsilon: float = 0.01,
         cov_mat: bool = True,
         max_num_models: int = 20,
-        start_swa_step: int = 10000,
+        start_swa_step: int = 1,
         swa_freq: int = 10,
         use_swa_svgd: bool = False,
         use_sym_kl: bool = False,
@@ -453,7 +453,7 @@ class ClassificationModel(pl.LightningModule):
             else:
                 scheduler.step()
             # return loss
-        elif self.optimizer == 'SWAG':
+        elif self.optimizer == 'SWAG' :
             self.log("lr", self.trainer.optimizers[0].param_groups[0]["lr"], prog_bar=True)
             opt = self.optimizers()
             scheduler = self.lr_schedulers()

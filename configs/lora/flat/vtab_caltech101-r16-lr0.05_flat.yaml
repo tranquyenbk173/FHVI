@@ -25,8 +25,7 @@ model:
   num_particles: 1
   cov_mat: True
   max_num_models: 20
-  use_sam: False
-  start_swag_step: 1
+  use_sam: True
   swa_freq: 1
 data:
   dataset: caltech101
