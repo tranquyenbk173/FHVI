@@ -6,7 +6,7 @@ trainer:
     class_path: pytorch_lightning.loggers.CSVLogger
     init_args:
       save_dir: output
-      name: cifar100-lora-r8-lr-0.15_SWAG
+      name: clevrdist-lora-r8-lr-0.15_flat
   max_epochs: 100
   # max_steps: 10000
   val_check_interval: 50
@@ -14,7 +14,7 @@ trainer:
 model:
   model_name: vit-b16-224-dino
   training_mode: lora
-  optimizer: SWAG
+  optimizer: flat_seeking
   lr: 0.15
   momentum: 0.9
   weight_decay: 0.0
@@ -25,11 +25,11 @@ model:
   num_particles: 1
   cov_mat: True
   max_num_models: 20
-  use_sam: False
+  use_sam: True
   swa_freq: 1
 data:
-  dataset: cifar100
-  root: ../vtab-1k/cifar100/
+  dataset: clevrdist
+  root: ../vtab-1k/clevrdist/
   size: 224
   batch_size: 24
   workers: 4
