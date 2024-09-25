@@ -1,0 +1,3 @@
+train_loss_epoch,train_acc_epoch,train_acc_top5_epoch,epoch,step,lr,train_loss_step,train_acc_step,train_acc_top5_step
+4.693819999694824,0.003156565595418215,0.024621212854981422,0,32,,,,
+,,,1,49,0.014700000174343586,4.777420997619629,0.0,0.0

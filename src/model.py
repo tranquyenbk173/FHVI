@@ -26,6 +26,7 @@ from .utils import block_expansion
 from .lora import LoRA_ViT
 from .base_vit2 import ViT, CustomLinear, CustomLinear2
 from .swag import SWAG, bn_update
+from src.sam import SAM
 # from .base_vit import ViT, CustomLinear
 
 torch.autograd.set_detect_anomaly(True)
@@ -477,12 +478,12 @@ class ClassificationModel(pl.LightningModule):
 
             opt.zero_grad()
             self.manual_backward(loss)
-            opt.step1(zero_grad= True)
+            opt.first_step(zero_grad= True)
             
             loss = self.shared_step(batch, "train")
 
             self.manual_backward(loss)
-            opt.step2(zero_grad= True)
+            opt.second_step(zero_grad= True)
 
 
             opt.zero_grad()
@@ -585,11 +586,8 @@ class ClassificationModel(pl.LightningModule):
                 weight_decay=self.weight_decay,
             )
         elif self.optimizer == 'flat_seeking' :
-            base_optimizer = torch.optim.SGD
-
-            optimizer =  SVGD(param = self.net.parameters(),base_optimizer= base_optimizer, lr=self.lr, betas=self.betas,
-                weight_decay=self.weight_decay, num_particles=self.num_particles, train_module=self, net=self.net)
-
+            base_optimizer = torch.optim.SGD  # define an optimizer for the "sharpness-aware" update
+            optimizer = SAM(self.net.parameters(), base_optimizer, lr= self.lr, momentum= self.momentum)
 
         # elif self.optimizer == "svgd":  #use Adam as the base optimizer by default @@        
         #     optimizer =  SVGD(param = self.net.parameters(), rho=self.rho, lr=self.lr, betas=self.betas,
