@@ -8,7 +8,7 @@ import torch
 import torch.nn.functional as F
 from peft import LoraConfig, get_peft_model
 from torch.optim import SGD, Adam, AdamW
-from .utils import SVGD, RBF, SAM
+from .utils import SVGD, RBF
 from torch.optim.lr_scheduler import LambdaLR
 from torch.optim.swa_utils import AveragedModel, SWALR
 from torch.optim.lr_scheduler import CosineAnnealingLR
@@ -84,7 +84,7 @@ class ClassificationModel(pl.LightningModule):
         epsilon: float = 0.01,
         cov_mat: bool = True,
         max_num_models: int = 20,
-        start_swa_step: int = 1,
+        start_swa_step: int = 10000,
         swa_freq: int = 10,
         use_swa_svgd: bool = False,
         use_sym_kl: bool = False,
@@ -453,8 +453,21 @@ class ClassificationModel(pl.LightningModule):
             else:
                 scheduler.step()
             # return loss
-
         elif self.optimizer == 'SWAG':
+            self.log("lr", self.trainer.optimizers[0].param_groups[0]["lr"], prog_bar=True)
+            opt = self.optimizers()
+            scheduler = self.lr_schedulers()
+            loss = self.shared_step(batch, "train")
+                
+            opt.zero_grad()
+            self.manual_backward(loss)
+            opt.step()
+            scheduler.step()
+            
+            if self.global_step > self.start_swag_step and (self.global_step + 1 - self.start_swag_step) % self.swa_freq == 0:
+                self.swag.collect_model(self.net)
+
+        elif self.optimizer == 'flat_seeking':
             self.log("lr", self.trainer.optimizers[0].param_groups[0]["lr"], prog_bar=True)
             opt = self.optimizers()
             scheduler = self.lr_schedulers()
@@ -479,33 +492,6 @@ class ClassificationModel(pl.LightningModule):
             
             if self.global_step > self.start_swag_step and (self.global_step + 1 - self.start_swag_step) % self.swa_freq == 0:
                 self.swag.collect_model(self.net)
-
-
-        # elif self.optimizer == 'flat_seeking':
-        #     self.log("lr", self.trainer.optimizers[0].param_groups[0]["lr"], prog_bar=True)
-        #     opt = self.optimizers()
-        #     scheduler = self.lr_schedulers()
-        #     torch.autograd.set_detect_anomaly(True)
-        #     loss = self.shared_step(batch, "train")
-                
-
-        #     opt.zero_grad()
-        #     self.manual_backward(loss)
-        #     opt.first_step(zero_grad= True)
-            
-        #     loss = self.shared_step(batch, "train")
-
-        #     self.manual_backward(loss)
-        #     opt.second_step(zero_grad= True)
-
-
-        #     opt.zero_grad()
-        #     scheduler.step()
-
-
-            
-        #     if self.global_step > self.start_swag_step and (self.global_step + 1 - self.start_swag_step) % self.swa_freq == 0:
-        #         self.swag.collect_model(self.net)
                 
                 
         else:
@@ -583,9 +569,12 @@ class ClassificationModel(pl.LightningModule):
             )
         elif self.optimizer == 'SWAG' or self.optimizer == 'flat_seeking' :
             # print(self.net.parameters())
-            base_optimizer = torch.optim.SGD  # define an optimizer for the "sharpness-aware" update
-            optimizer = SAM(self.net.parameters(), base_optimizer, lr= self.lr, momentum= self.momentum)
-
+            optimizer = SGD(
+                self.net.parameters(),
+                lr=self.lr,
+                momentum=self.momentum,
+                weight_decay=self.weight_decay,
+            )
         elif self.optimizer == "svgd":  #use Adam as the base optimizer by default @@        
             optimizer =  SVGD(param = self.net.parameters(), rho=self.rho, lr=self.lr, betas=self.betas,
                 weight_decay=self.weight_decay, num_particles=self.num_particles, train_module=self, net=self.net, use_sym_kl=self.use_sym_kl)
