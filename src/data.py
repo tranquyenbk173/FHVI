@@ -228,8 +228,8 @@ class DataModule(pl.LightningDataModule):
         rand_aug_m: int = 9,
         erase_prob: float = 0.0,
         use_trivial_aug: bool = False,
-        mean: Sequence = (0.5, 0.5, 0.5),
-        std: Sequence = (0.5, 0.5, 0.5),
+        mean: Sequence = (0.485, 0.456, 0.406),
+        std: Sequence = (0.229, 0.224, 0.225),
         batch_size: int = 32,
         workers: int = 4,
     ):
