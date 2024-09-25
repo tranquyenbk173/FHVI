@@ -26,11 +26,10 @@ model:
   cov_mat: True
   max_num_models: 20
   use_sam: False
-  start_swag_step: 1
   swa_freq: 1
 data:
   dataset: cifar100
-  root: ../Z.Data/vtab-1k/cifar100/
+  root: ../vtab-1k/cifar100/
   size: 224
   batch_size: 24
   workers: 4
