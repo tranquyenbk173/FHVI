@@ -14,7 +14,7 @@ trainer:
 model:
   model_name: vit-b16-224-dino
   training_mode: lora
-  optimizer: flat_seeking
+  optimizer: SWAG
   lr: 0.15
   momentum: 0.9
   weight_decay: 0.0
