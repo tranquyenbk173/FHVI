@@ -5,27 +5,26 @@ trainer:
   logger:
     class_path: pytorch_lightning.loggers.CSVLogger
     init_args:
-      save_dir: output/fsvi_fixaug/
-      name: smallnorb-azi-ver3-r8-lr-2-rho-0.01_tmux-[15]-sigma-1
+      save_dir: output/fsvi
+      name: patch_camelyon-r8-lr-0.2-rho-0.05_svgd_tmux-[1]-sigma-1
   max_epochs: 150
   # max_steps: 10000
   val_check_interval: 50
   num_sanity_val_steps: 0
 model:
-  sigma: 1
   model_name: vit-b16-224-dino
   training_mode: lora
   optimizer: svgd
-  lr: 2
+  lr: 0.2
   momentum: 0.9
-  weight_decay: 1e-4
+  weight_decay: 0.0
   scheduler: cosine
   warmup_steps: 500
-  rho: 0.01
+  rho: 0.05
   lora_r: 8
   lora_alpha: 8
   num_particles: 4
-  cov_mat: False
+  cov_mat: True
   max_num_models: 20
   use_sam: True
   start_swa_step: 200
@@ -33,11 +32,10 @@ model:
   use_swa_svgd: False 
   use_sym_kl: False
 data:
-  train_aug: False
-  dataset: smallnorb_azi
-  root: ../Z.Data/vtab-1k/smallnorb_azi
+  dataset: patch_camelyon
+  root: ../Z.Data/vtab-1k/patch_camelyon
   size: 224
-  batch_size: 64
+  batch_size: 24
   workers: 4
 model_checkpoint:
   dirpath: saved_checkpoints

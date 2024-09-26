@@ -5,22 +5,23 @@ trainer:
   logger:
     class_path: pytorch_lightning.loggers.CSVLogger
     init_args:
-      save_dir: output/fsvi/
-      name: kitti-r8-lr-0.1-rho-0.001_fsvi_tmux-[14]-sigma-1.4
+      save_dir: output/fsvi_fixaug/
+      name: kitti-ver5-r8-lr-2-rho-0.05_fsvi_tmux-[12]-sigma-1
   max_epochs: 150
   # max_steps: 10000
   val_check_interval: 50
   num_sanity_val_steps: 0
 model:
+  sigma: 1
   model_name: vit-b16-224-dino
   training_mode: lora
   optimizer: svgd
-  lr: 0.1
+  lr: 2
   momentum: 0.9
   weight_decay: 1e-4
   scheduler: cosine
   warmup_steps: 500
-  rho: 0.001
+  rho: 0.05
   lora_r: 8
   lora_alpha: 8
   num_particles: 4
@@ -32,6 +33,7 @@ model:
   use_swa_svgd: False 
   use_sym_kl: False
 data:
+  train_aug: True 
   dataset: kitti
   root: ../Z.Data/vtab-1k/kitti
   size: 224

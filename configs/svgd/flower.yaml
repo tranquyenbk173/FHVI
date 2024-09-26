@@ -5,12 +5,14 @@ trainer:
   logger:
     class_path: pytorch_lightning.loggers.CSVLogger
     init_args:
-      save_dir: output/svgd
-      name: caltech101-r8-lr-0.2_svgd_tmux-[8]_sigma_1  
-  max_epochs: 150
+      save_dir: output/fsvi_fixaug/
+      name: flower-r8-lr0.2_tmux[6]
+  max_epochs: 200
+  # max_steps: 10000
   val_check_interval: 50
   num_sanity_val_steps: 0
 model:
+  sigma: 1.2
   model_name: vit-b16-224-dino
   training_mode: lora
   optimizer: svgd
@@ -23,21 +25,22 @@ model:
   lora_r: 8
   lora_alpha: 8
   num_particles: 4
-  cov_mat: True
+  cov_mat: False
   max_num_models: 20
   use_sam: False
   start_swa_step: 200
-  swa_freq: 1
-  use_swa_svgd: False
+  swa_freq: 5
+  use_swa_svgd: False 
   use_sym_kl: False
 data:
-  dataset: caltech101
-  root: ../Z.Data/vtab-1k/caltech101
+  train_aug: True
+  dataset: flowers102
+  root: ../Z.Data/vtab-1k/oxford_flowers102
   size: 224
-  batch_size: 24
+  batch_size: 64
   workers: 4
 model_checkpoint:
-  dirpath: saved_checkpoints
+  dirpath: saved_checkpoints/svgd/
   filename: best-step-{step}-{val_acc:.4f}
   monitor: val_acc
   mode: max

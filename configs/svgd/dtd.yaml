@@ -5,10 +5,9 @@ trainer:
   logger:
     class_path: pytorch_lightning.loggers.CSVLogger
     init_args:
-      save_dir: output/fsvi_fixaug/
-      name: smallnorb-azi-ver3-r8-lr-2-rho-0.01_tmux-[15]-sigma-1
+      save_dir: output/svgd_fixaug/
+      name: dtd-ver2-r16-DTD-lr2_tmux-[20]_sigma1  
   max_epochs: 150
-  # max_steps: 10000
   val_check_interval: 50
   num_sanity_val_steps: 0
 model:
@@ -18,24 +17,24 @@ model:
   optimizer: svgd
   lr: 2
   momentum: 0.9
-  weight_decay: 1e-4
+  weight_decay: 0.0
   scheduler: cosine
   warmup_steps: 500
-  rho: 0.01
-  lora_r: 8
+  rho: 0
+  lora_r: 16
   lora_alpha: 8
   num_particles: 4
-  cov_mat: False
+  cov_mat: True
   max_num_models: 20
-  use_sam: True
+  use_sam: False
   start_swa_step: 200
-  swa_freq: 5
-  use_swa_svgd: False 
+  swa_freq: 1
+  use_swa_svgd: False
   use_sym_kl: False
 data:
-  train_aug: False
-  dataset: smallnorb_azi
-  root: ../Z.Data/vtab-1k/smallnorb_azi
+  train_aug: True
+  dataset: dtd
+  root: ../Z.Data/vtab-1k/dtd
   size: 224
   batch_size: 64
   workers: 4
