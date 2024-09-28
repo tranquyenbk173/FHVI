@@ -28,7 +28,7 @@ data:
   dataset: smallnorb_ele
   root: ../vtab-1k/smallnorb_ele
   size: 224
-  batch_size: 64
+  batch_size: 16
   workers: 4
   train_aug: False
 model_checkpoint:

@@ -28,7 +28,7 @@ data:
   dataset: dsprites_loc
   root: ../vtab-1k/dsprites_loc
   size: 224
-  batch_size: 64
+  batch_size: 16
   workers: 4
   train_aug: True
 model_checkpoint:
