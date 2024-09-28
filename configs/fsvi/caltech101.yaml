@@ -5,23 +5,24 @@ trainer:
   logger:
     class_path: pytorch_lightning.loggers.CSVLogger
     init_args:
-      save_dir: output/fsvi
-      name: caltech101-r16-lr-0.2-rho-0.01_FSVI_tmux-[0]_sigma_1.6  
+      save_dir: output/fsvi_fixaug
+      name: caltech101-ver2-r4-lr-2.1-rho-0.05_FSVI_tmux-[0]_sigma_1.2  
   max_epochs: 150
   val_check_interval: 50
   num_sanity_val_steps: 0
 model:
+  sigma: 1.4
   model_name: vit-b16-224-dino
   training_mode: lora
   optimizer: svgd
-  lr: 0.2
+  lr: 2.1
   momentum: 0.9
   weight_decay: 0.0
   scheduler: cosine
   warmup_steps: 500
-  rho: 0.01
-  lora_r: 16
-  lora_alpha: 8
+  rho: 0.05
+  lora_r: 4
+  lora_alpha: 16
   num_particles: 4
   cov_mat: True
   max_num_models: 20
@@ -31,6 +32,7 @@ model:
   use_swa_svgd: False
   use_sym_kl: False
 data:
+  train_aug: False
   dataset: caltech101
   root: ../Z.Data/vtab-1k/caltech101
   size: 224

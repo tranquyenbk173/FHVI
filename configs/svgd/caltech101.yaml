@@ -6,7 +6,7 @@ trainer:
     class_path: pytorch_lightning.loggers.CSVLogger
     init_args:
       save_dir: output/svgd_fixaug
-      name: caltech101-ver3-r16-lr-1_tmux-[0]_sigma_1  
+      name: caltech101-ver4-r16-lr-2_tmux-[19]_sigma_1  
   max_epochs: 150
   val_check_interval: 50
   num_sanity_val_steps: 0
@@ -15,7 +15,7 @@ model:
   model_name: vit-b16-224-dino
   training_mode: lora
   optimizer: svgd
-  lr: 1
+  lr: 2
   momentum: 0.9
   weight_decay: 0.0
   scheduler: cosine

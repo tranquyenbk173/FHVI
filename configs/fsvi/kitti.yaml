@@ -6,7 +6,7 @@ trainer:
     class_path: pytorch_lightning.loggers.CSVLogger
     init_args:
       save_dir: output/fsvi_fixaug/
-      name: kitti-ver5-r8-lr-2-rho-0.05_fsvi_tmux-[12]-sigma-1
+      name: kitti-ver5-r8-lr-2.1-rho-0.05_fsvi_tmux-[12]-sigma-0.9
   max_epochs: 150
   # max_steps: 10000
   val_check_interval: 50
@@ -16,7 +16,7 @@ model:
   model_name: vit-b16-224-dino
   training_mode: lora
   optimizer: svgd
-  lr: 2
+  lr: 2.1
   momentum: 0.9
   weight_decay: 1e-4
   scheduler: cosine

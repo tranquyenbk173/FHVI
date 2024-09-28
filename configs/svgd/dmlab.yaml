@@ -5,8 +5,8 @@ trainer:
   logger:
     class_path: pytorch_lightning.loggers.CSVLogger
     init_args:
-      save_dir: output/fsvi_fixaug
-      name: dmlab-ver3-newaug-fsvi-4p-r8-lr-0.15-rho-0.01_tmux-[1]-sigma-1.4
+      save_dir: output/svgd_fixaug
+      name: dmlab-ver3-newaug-4p-r8-lr-1.5_tmux-[1]-sigma-1
   max_epochs: 150
   # max_steps: 10000
   val_check_interval: 50
@@ -15,19 +15,19 @@ model:
   model_name: vit-b16-224-dino
   training_mode: lora
   optimizer: svgd
-  lr: 0.15
-  sigma: 1.4
+  lr: 1.2
+  sigma: 1
   momentum: 0.9
   weight_decay: 0.0
   scheduler: cosine
   warmup_steps: 500
-  rho: 0.01
+  rho: 0
   lora_r: 8
   lora_alpha: 8
   num_particles: 4
   cov_mat: True
   max_num_models: 20
-  use_sam: True
+  use_sam: False
   start_swa_step: 200
   swa_freq: 5
   use_swa_svgd: False 

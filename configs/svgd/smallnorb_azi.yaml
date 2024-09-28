@@ -5,8 +5,8 @@ trainer:
   logger:
     class_path: pytorch_lightning.loggers.CSVLogger
     init_args:
-      save_dir: output/fsvi_fixaug/
-      name: smallnorb-azi-r8-lr-0.2-rho-0.02_tmux-[15]-sigma-1
+      save_dir: output/svgd_fixaug/
+      name: smallnorb-azi-r8-lr-1.2_tmux-[15]-sigma-1.2
   max_epochs: 150
   # max_steps: 10000
   val_check_interval: 50
@@ -16,18 +16,18 @@ model:
   model_name: vit-b16-224-dino
   training_mode: lora
   optimizer: svgd
-  lr: 0.2
+  lr: 1.2
   momentum: 0.9
   weight_decay: 1e-4
   scheduler: cosine
   warmup_steps: 500
-  rho: 0.02
-  lora_r: 8
-  lora_alpha: 8
+  rho: 0
+  lora_r: 4
+  lora_alpha: 12
   num_particles: 4
   cov_mat: False
   max_num_models: 20
-  use_sam: True
+  use_sam: False
   start_swa_step: 200
   swa_freq: 5
   use_swa_svgd: False 
