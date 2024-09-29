@@ -8,7 +8,7 @@ import torch
 import torch.nn.functional as F
 from peft import LoraConfig, get_peft_model
 from torch.optim import SGD, Adam, AdamW
-from .utils import SVGD, RBF
+from .utils import SVGD, RBF, SAM
 from torch.optim.lr_scheduler import LambdaLR
 from torch.optim.swa_utils import AveragedModel, SWALR
 from torch.optim.lr_scheduler import CosineAnnealingLR
@@ -84,7 +84,7 @@ class ClassificationModel(pl.LightningModule):
         epsilon: float = 0.01,
         cov_mat: bool = True,
         max_num_models: int = 20,
-        start_swa_step: int = 10000,
+        start_swa_step: int = 3,
         swa_freq: int = 10,
         use_swa_svgd: bool = False,
         use_sym_kl: bool = False,
@@ -468,7 +468,13 @@ class ClassificationModel(pl.LightningModule):
                 
             opt.zero_grad()
             self.manual_backward(loss)
-            opt.step()
+            opt.first_step(zero_grad= True)
+            
+            loss = self.shared_step(batch, "train")
+
+            self.manual_backward(loss)
+            opt.second_step(zero_grad= True)
+
             scheduler.step()
             
             if self.global_step > self.start_swag_step and (self.global_step + 1 - self.start_swag_step) % self.swa_freq == 0:
@@ -589,12 +595,13 @@ class ClassificationModel(pl.LightningModule):
             )
         elif self.optimizer == 'SWAG' or self.optimizer == 'flat_seeking' :
             # print(self.net.parameters())
-            optimizer = SGD(
-                self.net.parameters(),
-                lr=self.lr,
-                momentum=self.momentum,
-                weight_decay=self.weight_decay,
-            )
+            base_optimizer = torch.optim.SGD  # define an optimizer for the "sharpness-aware" update
+
+            optimizer = SAM(self.net.parameters(), base_optimizer, lr=self.lr, momentum= self.momentum)
+
+
+
+
         elif self.optimizer == "svgd":  #use Adam as the base optimizer by default @@        
             optimizer =  SVGD(
                 param = self.net.parameters(), 

@@ -1,4 +1,3 @@
-# pytorch_lightning==2.0.2
 trainer:
   accelerator: gpu
   devices: 1
@@ -6,15 +5,15 @@ trainer:
     class_path: pytorch_lightning.loggers.CSVLogger
     init_args:
       save_dir: output
-      name: cifar100-lora-r8-lr-0.15_SWAG
-  max_epochs: 100
+      name: kitti-lora-r8-lr-0.15_deepEns_4
+  max_epochs: 150
   # max_steps: 10000
   val_check_interval: 50
   num_sanity_val_steps: 0
 model:
   model_name: vit-b16-224-dino
   training_mode: lora
-  optimizer: SWAG
+  optimizer: deep_ens
   lr: 0.15
   momentum: 0.9
   weight_decay: 0.0
@@ -22,20 +21,16 @@ model:
   warmup_steps: 500
   lora_r: 8
   lora_alpha: 8
-  num_particles: 1
-  cov_mat: True
-  max_num_models: 20
+  num_particles: 4
+  epsilon: 0.01
   use_sam: False
-  swa_freq: 1
 data:
-  dataset: cifar100
-  root: ../vtab-1k/cifar100/
+  dataset: kitti
+  root: ../vtab-1k/kitti
   size: 224
-  batch_size: 24
+  batch_size: 16
   workers: 4
+  train_aug: True
 model_checkpoint:
   dirpath: saved_checkpoints
   filename: best-step-{step}-{val_acc:.4f}
-  monitor: val_acc
-  mode: max
-  save_last: true
