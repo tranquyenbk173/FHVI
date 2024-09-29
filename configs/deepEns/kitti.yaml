@@ -28,7 +28,7 @@ data:
   dataset: kitti
   root: ../vtab-1k/kitti
   size: 224
-  batch_size: 16
+  batch_size: 64
   workers: 4
   train_aug: True
 model_checkpoint:

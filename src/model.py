@@ -277,7 +277,7 @@ class ClassificationModel(pl.LightningModule):
                     task="multiclass",
                     top_k=min(5, self.n_classes),
                 ),
-                "ece": CalibrationError(num_classes=self.n_classes, norm='l1')
+                # "ece": CalibrationError(num_classes=self.n_classes, norm='l1')
             }
         )
         self.val_metrics = MetricCollection(
@@ -288,7 +288,7 @@ class ClassificationModel(pl.LightningModule):
                     task="multiclass",
                     top_k=min(5, self.n_classes),
                 ),
-                "ece": CalibrationError(num_classes=self.n_classes, norm='l1')
+                "ece": CalibrationError(num_classes=self.n_classes, norm='l1').to("cpu")
             }
         )
         self.test_metrics = MetricCollection(
@@ -299,7 +299,7 @@ class ClassificationModel(pl.LightningModule):
                     task="multiclass",
                     top_k=min(5, self.n_classes),
                 ),
-                "ece": CalibrationError(num_classes=self.n_classes, norm='l1'),
+                "ece": CalibrationError(num_classes=self.n_classes, norm='l1').to("cpu"),
                 "stats": StatScores(
                     task="multiclass", average=None, num_classes=self.n_classes
                 ),
@@ -544,6 +544,11 @@ class ClassificationModel(pl.LightningModule):
         # self.test_step(batch, _)
         return val
     
+
+    def on_validation_epoch_start(self):
+        # Reset calibration metric at the start of each validation epoch
+        self.val_metrics["ece"].reset()
+
     def on_validation_epoch_end(self):
         test_dataloader = self.trainer.datamodule.test_dataloader()
         for batch in test_dataloader:
@@ -553,6 +558,10 @@ class ClassificationModel(pl.LightningModule):
     def test_step(self, batch, _):
         return self.shared_step(batch, "test")
 
+    def on_test_epoch_start(self):
+        # Reset calibration metric at the start of each validation epoch
+        self.test_metrics["ece"].reset()
+        
     def on_test_epoch_end(self):
         """Save per-class accuracies to csv"""
         # Aggregate all batch stats

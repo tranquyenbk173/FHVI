@@ -28,7 +28,7 @@ data:
   dataset: smallnorb_azi
   root: ../vtab-1k/smallnorb_azi
   size: 224
-  batch_size: 16
+  batch_size: 64
   workers: 4
   train_aug: False
 model_checkpoint:
