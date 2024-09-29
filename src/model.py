@@ -1,5 +1,5 @@
 from typing import List, Optional, Tuple
-
+import time  
 import copy
 import pandas as pd
 import numpy as np
@@ -153,6 +153,11 @@ class ClassificationModel(pl.LightningModule):
         self.use_swa_svgd =  use_swa_svgd
         self.use_sym_kl = use_sym_kl
         self.sigma = sigma
+
+        # runtime
+        self.epoch_start_time = None
+        self.global_start_time = time.time()
+
         # Initialize network
         try:
             model_path = MODEL_DICT[self.model_name]
@@ -508,6 +513,19 @@ class ClassificationModel(pl.LightningModule):
             
             self.log("lr", self.trainer.optimizers[0].param_groups[0]["lr"], prog_bar=True)
             # return self.shared_step(batch, "train")
+
+    def on_train_epoch_start(self):
+        # Capture the start time of the epoch
+        self.epoch_start_time = time.time()
+        self.log("start_abs_time", self.epoch_start_time - self.global_start_time, prog_bar=True)
+    
+    def on_train_epoch_end(self):
+        # Calculate elapsed time
+        epoch_duration = time.time() - self.epoch_start_time
+        self.log("epoch_time", epoch_duration, prog_bar=True)
+        torch.cuda.empty_cache()
+
+
 
     def validation_step(self, batch, _):
         if self.optimizer == 'SWAG' or self.optimizer == 'flat_seeking':

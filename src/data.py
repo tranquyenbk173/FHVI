@@ -227,7 +227,7 @@ class DataModule(pl.LightningDataModule):
         use_trivial_aug: bool = False,
         mean: Sequence = (0.5, 0.5, 0.5),
         std: Sequence = (0.5, 0.5, 0.5),
-        batch_size: int = 32,
+        batch_size: int = 16,
         workers: int = 4,
         train_aug=False
     ):
@@ -421,7 +421,7 @@ class DataModule(pl.LightningDataModule):
     def val_dataloader(self):
         return DataLoader(
             self.val_dataset,
-            batch_size=self.batch_size,
+            batch_size= int(self.batch_size / 2) ,
             shuffle=False,
             num_workers=self.workers,
             pin_memory=True,
@@ -430,7 +430,7 @@ class DataModule(pl.LightningDataModule):
     def test_dataloader(self):
         return DataLoader(
             self.test_dataset,
-            batch_size=self.batch_size,
+            batch_size= int(self.batch_size / 2),
             shuffle=False,
             num_workers=self.workers,
             pin_memory=True,

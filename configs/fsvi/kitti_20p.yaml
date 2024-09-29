@@ -5,8 +5,8 @@ trainer:
   logger:
     class_path: pytorch_lightning.loggers.CSVLogger
     init_args:
-      save_dir: output/fsvi_fixaug/
-      name: kitti-ver5-r8-lr-2.1-rho-0.05_fsvi_tmux-[12]-sigma-0.9
+      save_dir: output/
+      name: kitti-20p
   max_epochs: 150
   # max_steps: 10000
   val_check_interval: 50
@@ -24,7 +24,7 @@ model:
   rho: 0.05
   lora_r: 8
   lora_alpha: 8
-  num_particles: 4
+  num_particles: 20
   cov_mat: False
   max_num_models: 20
   use_sam: True
@@ -35,9 +35,9 @@ model:
 data:
   train_aug: True 
   dataset: kitti
-  root: ../Z.Data/vtab-1k/kitti
+  root: ../vtab-1k/kitti
   size: 224
-  batch_size: 32
+  batch_size: 8
   workers: 4
 model_checkpoint:
   dirpath: saved_checkpoints
