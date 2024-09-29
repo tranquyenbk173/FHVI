@@ -548,6 +548,7 @@ class ClassificationModel(pl.LightningModule):
         test_dataloader = self.trainer.datamodule.test_dataloader()
         for batch in test_dataloader:
             self.test_step(batch, 0)
+        torch.cuda.empty_cache()
             
     def test_step(self, batch, _):
         return self.shared_step(batch, "test")
@@ -564,6 +565,7 @@ class ClassificationModel(pl.LightningModule):
         for tp, _, _, _, sup in combined_stats:
             acc = tp / sup
             per_class_acc.append((acc.item(), sup.item()))
+        torch.cuda.empty_cache()
 
         # Save to csv
         df = pd.DataFrame(per_class_acc, columns=["acc", "n"])
