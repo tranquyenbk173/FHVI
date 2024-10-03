@@ -225,11 +225,9 @@ class DataModule(pl.LightningDataModule):
         rand_aug_m: int = 9,
         erase_prob: float = 0.0,
         use_trivial_aug: bool = False,
-        mean: Sequence = (0.5, 0.5, 0.5),
-        std: Sequence = (0.5, 0.5, 0.5),
         batch_size: int = 32,
         workers: int = 4,
-        train_aug=False
+        transform_train_id= 1
     ):
         """Classification Datamodule
 
@@ -263,11 +261,9 @@ class DataModule(pl.LightningDataModule):
         self.rand_aug_m = rand_aug_m
         self.erase_prob = erase_prob
         self.use_trivial_aug = use_trivial_aug
-        self.mean = mean
-        self.std = std
         self.batch_size = batch_size
         self.workers = workers
-        self.train_aug = train_aug
+        self.transform_train_id = transform_train_id
 
         # Define dataset
         if self.dataset == "custom":
@@ -302,8 +298,12 @@ class DataModule(pl.LightningDataModule):
                 raise ValueError(
                     f"{dataset} is not an available dataset. Should be one of {[k for k in DATASET_DICT.keys()]}"
                 )
-            
-        if self.train_aug:
+        transform = transforms.Compose([
+                transforms.Resize((224, 224)),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+        
+        if self.transform_train_id == 0: #self.train_aug
             aug_transform = create_transform(
                     input_size=(224, 224),
                     is_training=True,
@@ -314,22 +314,12 @@ class DataModule(pl.LightningDataModule):
                     re_count=1,
                     interpolation='bicubic',
                 )
-            aug_transform.transforms[0] = transforms.Resize((224, 224), interpolation=3)
-        else:
-            aug_transform = None
-
-        print(aug_transform)
-
-        transform = transforms.Compose([
-                transforms.Resize((224, 224)),
-                transforms.ToTensor(),
-                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
-        
-        #normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        self.transforms_train = aug_transform if aug_transform else transform
-        self.transforms_test = transform
-
-        """ self.transforms_train = transforms.Compose(
+            aug_transform.transforms[0] = transforms.Resize((224, 224), interpolation=3) 
+            self.transforms_train = aug_transform
+        elif self.transform_train_id == 1:
+            self.transforms_train = transform
+        elif self.transform_train_id == 2:
+            self.transforms_train = transforms.Compose(
             [
                 transforms.RandomResizedCrop(
                     (self.size, self.size),
@@ -340,32 +330,16 @@ class DataModule(pl.LightningDataModule):
                 if self.use_trivial_aug
                 else transforms.RandAugment(self.rand_aug_n, self.rand_aug_m),
                 transforms.ToTensor(),
-                #transforms.Normalize(mean=self.mean, std=self.std),
-                normalize,
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
                 transforms.RandomErasing(p=self.erase_prob),
             ]
         )
-        self.transforms_test = transforms.Compose(
-            [
-                transforms.Resize(
-                    (self.size, self.size),
-                ),
-                transforms.ToTensor(),
-                normalize,
-                #transforms.Normalize(mean=self.mean, std=self.std),
-            ]
-        ) """
+
+        self.transforms_test = transform
 
     def prepare_data(self):
         if self.dataset != "custom":
             pass
-            # self.train_dataset_fn(self.root)
-            # self.val_dataset_fn(self.root)
-            # self.test_dataset_fn(self.root)
-            
-    # def train_dataset_fn(root=self.root, transform=self.transforms_train):
-    #     return ImageFilelist(root=self.root, flist=root + "/train800.txt",
-    #             transform=self.transforms_train)
 
     def setup(self, stage="fit"):
         if self.dataset == "custom":
@@ -381,12 +355,6 @@ class DataModule(pl.LightningDataModule):
         else:
             if stage == "fit":
                 print('>>>> Stage fit \n \n \n')
-                # self.train_dataset = self.train_dataset_fn(
-                #     self.root, transform=self.transforms_train, download=False
-                # )
-                # self.val_dataset = self.val_dataset_fn(
-                #     self.root, transform=self.transforms_test, download=False
-                # )
                 self.train_dataset = ImageFilelist(root=self.root, flist=self.root + "/train800val200.txt",
                 transform=self.transforms_train)
                 self.val_dataset = ImageFilelist(root=self.root, flist=self.root + "/val200.txt",
@@ -395,16 +363,10 @@ class DataModule(pl.LightningDataModule):
                 transform=self.transforms_test)
             elif stage == "validate":
                 print('>>>> Stage val \n \n \n')
-                # self.val_dataset = self.val_dataset_fn(
-                #     self.root, transform=self.transforms_test, download=False
-                # )
                 self.val_dataset = ImageFilelist(root=self.root, flist=self.root + "/val200.txt",
                 transform=self.transforms_test)
             elif stage == "test":
                 print('>>>> Stage test \n \n \n')
-                # self.test_dataset = self.test_dataset_fn(
-                #     self.root, transform=self.transforms_test, download=False
-                # )
                 self.test_dataset = ImageFilelist(root=self.root, flist=self.root + "/test.txt",
                 transform=self.transforms_test)
 
