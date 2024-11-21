@@ -8,8 +8,9 @@ import torch
 import torch.nn.functional as F
 from peft import LoraConfig, get_peft_model
 from torch.optim import SGD, Adam, AdamW
-from .utils import SVGD, RBF
+from .utils import SVGD, RBF, FHBI
 from torch.optim.lr_scheduler import LambdaLR
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from torchmetrics import MetricCollection
 from torchmetrics.classification.accuracy import Accuracy
 from torchmetrics.classification import MulticlassCalibrationError as CalibrationError
@@ -54,6 +55,7 @@ class ClassificationModel(pl.LightningModule):
         self,
         model_name: str = "vit-b16-224-in21k",
         optimizer: str = "sgd",
+        rho: float= 0.05,
         lr: float = 1e-2,
         betas: Tuple[float, float] = (0.9, 0.999),
         momentum: float = 0.9,
@@ -77,6 +79,10 @@ class ClassificationModel(pl.LightningModule):
         num_particles: int = 10,
         use_sam: bool = False,
         weights_path: str = 'checkpoint/B_16.pth',
+        epsilon: float = 0.01,
+        cov_mat: bool = True,
+        max_num_models: int = 20,
+        sigma = 1
     ):
         """Classification Model
 
@@ -110,6 +116,7 @@ class ClassificationModel(pl.LightningModule):
         self.save_hyperparameters()
         self.model_name = model_name
         self.optimizer = optimizer
+        self.rho = rho
         self.lr = lr
         self.betas = betas
         self.momentum = momentum
@@ -132,7 +139,10 @@ class ClassificationModel(pl.LightningModule):
         self.from_scratch = from_scratch
         self.num_particles =  num_particles
         self.use_sam = use_sam
-
+        self.epsilon = epsilon
+        self.cov_mat = cov_mat
+        self.max_num_models = max_num_models
+        self.sigma = sigma
         # Initialize network
         try:
             model_path = MODEL_DICT[self.model_name]
@@ -149,14 +159,7 @@ class ClassificationModel(pl.LightningModule):
             self.net.classifier = torch.nn.Linear(config.hidden_size, self.n_classes)
         else:
             # Initialize with pretrained weights
-            self.net = AutoModelForImageClassification.from_pretrained(
-                model_path,
-                num_labels=self.n_classes,
-                ignore_mismatched_sizes=True,
-                image_size=self.image_size,
-            )
-            
-            if self.optimizer == 'svgd':
+            if self.optimizer in ['svgd', "deep_ens", "fhbi"]:
                 print('Model name', self.model_name)
                 # self.net = ViT(name='B_16_imagenet1k', pretrained=True, num_classes=self.n_classes, image_size=self.image_size, num_particles=self.num_particles)
                 self.net = ViT(name='vit-b16-224-in21k', pretrained=True, num_classes=self.n_classes, image_size=self.image_size, num_particles=self.num_particles, weight_path=weights_path)
@@ -196,11 +199,12 @@ class ClassificationModel(pl.LightningModule):
                 bias=self.lora_bias,
                 modules_to_save=["classifier"],
             )
-            if self.optimizer != "svgd":
+            if self.optimizer not in ['svgd', "deep_ens", "fhbi"]:
                 self.net = get_peft_model(self.net, config)
             else: #init multiple net @@ corresponding to different particles
                 
                 self.net = LoRA_ViT(num_particles=self.num_particles, vit_model=self.net, r=self.lora_r, alpha=self.lora_alpha, num_classes=self.n_classes)
+                    
                 
                     
         elif self.training_mode == "block":
@@ -247,7 +251,7 @@ class ClassificationModel(pl.LightningModule):
                     task="multiclass",
                     top_k=min(5, self.n_classes),
                 ),
-                # "ece": CalibrationError(num_classes=self.n_classes, norm='l1')
+                "ece": CalibrationError(num_classes=self.n_classes, norm='l1')
             }
         )
         self.val_metrics = MetricCollection(
@@ -258,7 +262,7 @@ class ClassificationModel(pl.LightningModule):
                     task="multiclass",
                     top_k=min(5, self.n_classes),
                 ),
-                # "ece": CalibrationError(num_classes=self.n_classes, norm='l1')
+                "ece": CalibrationError(num_classes=self.n_classes, norm='l1')
             }
         )
         self.test_metrics = MetricCollection(
@@ -269,7 +273,7 @@ class ClassificationModel(pl.LightningModule):
                     task="multiclass",
                     top_k=min(5, self.n_classes),
                 ),
-                # "ece": CalibrationError(num_classes=self.n_classes, norm='l1'),
+                "ece": CalibrationError(num_classes=self.n_classes, norm='l1'),
                 "stats": StatScores(
                     task="multiclass", average=None, num_classes=self.n_classes
                 ),
@@ -291,11 +295,11 @@ class ClassificationModel(pl.LightningModule):
 
         self.test_metric_outputs = []
         
-        if self.optimizer == 'svgd':
+        if self.optimizer in ['svgd', 'deep_ens', 'fhbi']:
             self.automatic_optimization = False
 
     def forward(self, x):
-        if self.optimizer != "svgd":
+        if self.optimizer not in ['svgd', 'deep_ens', 'fhbi']:
             return self.net(x).logits
         else:
             res = self.net(x)
@@ -303,6 +307,7 @@ class ClassificationModel(pl.LightningModule):
         
     def shared_step(self, batch, mode="train"):
         x, y = batch
+        x, y = x.cuda(), y.cuda()
 
         if mode == "train":
             # Only converts targets to one-hot if no label smoothing, mixup or cutmix is set
@@ -310,18 +315,60 @@ class ClassificationModel(pl.LightningModule):
         else:
             y = F.one_hot(y, num_classes=self.n_classes).float()
 
-        # Pass through network
-        try:
-            pred = self(x)
-        except:
-            x, y = x.cuda(), y.cuda()
-            pred = self(x)
         
-        if self.optimizer != "svgd":
+        if self.optimizer not in ['svgd', 'deep_ens', 'fhbi']:
+            # Pass through network
+
+            pred = self(x)
             loss = self.loss_fn(pred, y)
             # Get accuracy
             metrics = getattr(self, f"{mode}_metrics")(pred, y.argmax(1))
+        elif self.optimizer == 'deep_ens' and mode == "train":
+            
+            scaled_epsilon = self.epsilon * (x.max() - x.min())
+
+            # force inputs to require gradient
+            inputs = x.clone()
+            inputs.requires_grad = True
+            
+            # standard forwards pass
+            pred = self(inputs)
+                                
+            pred_ = 0 #pred
+            for j in range(self.num_particles):
+                pred_ = pred_ + pred[j]
+            pred_ = pred_/max(1, self.num_particles)
+            loss = self.loss_fn(pred_, y)
+            
+            # now compute gradients wrt input
+            self.optimizers().zero_grad()
+            self.manual_backward(loss) #, retain_graph=True)
+            # now compute sign of gradients
+            inputs_grad = torch.sign(inputs.grad)
+
+            # perturb inputs and use clamped output
+            inputs_perturbed = torch.clamp(
+                inputs + scaled_epsilon * inputs_grad, 0.0, 1.0
+            ).detach()
+            inputs.grad.zero_()
+            
+            inputs_all = torch.cat((inputs, inputs_perturbed), dim=0)
+            outputs_all = self(inputs_all)
+
+            # compute adversarial version of loss
+            pred_p = 0 #pred
+            for j in range(self.num_particles):
+                pred_p = pred_p + outputs_all[j]
+            pred_p = pred_p/max(1, self.num_particles)
+            final_loss = (self.loss_fn(pred_p[:y.shape[0]], y) + self.loss_fn(pred_p[y.shape[0]:], y))/2.0
+            
+            loss = final_loss
+            
+            # Get accuracy
+            metrics = getattr(self, f"{mode}_metrics")(pred_, y.argmax(1))
+
         else:
+            pred = self(x)
             pred_ = 0 #pred
             for j in range(self.num_particles):
                 pred_ = pred_ + pred[j]
@@ -355,23 +402,46 @@ class ClassificationModel(pl.LightningModule):
             opt.zero_grad()
             self.manual_backward(loss)
 
-
             # for sam
-            if self.use_sam:
-                
-                org_weight_tuple, kernel_tuple = opt.step1()
-                loss = self.shared_step(batch, "train")
-                opt.zero_grad()
-                self.manual_backward(loss)
-                opt.step2(org_weight_tuple, kernel_tuple)
-            else:
-                opt.step_()
+            opt.step_()
             opt.zero_grad()
+            
+            scheduler.step()
+            # return loss
+        elif self.optimizer == 'fhbi':
+            self.log("lr", self.trainer.optimizers[0].param_groups[0]["lr"], prog_bar=True)
+            opt = self.optimizers()
+            scheduler = self.lr_schedulers()
+            
+            torch.autograd.set_detect_anomaly(True)
+
+            loss = self.shared_step(batch, "train")
+            
+            opt.zero_grad()
+            self.manual_backward(loss)
+
+            org_weight_tuple, kernel_tuple = opt.step1()
+            loss = self.shared_step(batch, "train")
+            opt.zero_grad()
+            self.manual_backward(loss)
+            opt.step2(org_weight_tuple, kernel_tuple)
+                    
+            opt.zero_grad()
+            
             scheduler.step()
             # return loss
         else:
+            opt = self.optimizers()
+            scheduler = self.lr_schedulers()
+            loss = self.shared_step(batch, "train")
+            
+            opt.zero_grad()
+            self.manual_backward(loss)
+            opt.step()
+            scheduler.step()
+            
             self.log("lr", self.trainer.optimizers[0].param_groups[0]["lr"], prog_bar=True)
-            return self.shared_step(batch, "train")
+            # return self.shared_step(batch, "train")
 
     def validation_step(self, batch, _):
         val = self.shared_step(batch, "val")
@@ -420,7 +490,7 @@ class ClassificationModel(pl.LightningModule):
                 betas=self.betas,
                 weight_decay=self.weight_decay,
             )
-        elif self.optimizer == "sgd":
+        elif self.optimizer in ["sgd", 'deep_ens']:
             optimizer = SGD(
                 self.net.parameters(),
                 lr=self.lr,
@@ -428,11 +498,32 @@ class ClassificationModel(pl.LightningModule):
                 weight_decay=self.weight_decay,
             )
         elif self.optimizer == "svgd":  #use Adam as the base optimizer by default @@        
-            optimizer =  SVGD(param = self.net.parameters(), lr=self.lr, betas=self.betas,
-                weight_decay=self.weight_decay, num_particles=self.num_particles, train_module=self, net=self.net)
+            optimizer =  SVGD(
+                param = self.net.parameters(), 
+                rho=self.rho,
+                sigma=self.sigma, 
+                lr=self.lr, 
+                betas=self.betas,
+                weight_decay=self.weight_decay, 
+                num_particles=self.num_particles, 
+                train_module=self, 
+                net=self.net, 
+                )
+        elif self.optimizer == "fhbi":  #use Adam as the base optimizer by default @@        
+            optimizer =  FHBI(
+                param = self.net.parameters(), 
+                rho=self.rho,
+                sigma=self.sigma, 
+                lr=self.lr, 
+                betas=self.betas,
+                weight_decay=self.weight_decay, 
+                num_particles=self.num_particles, 
+                train_module=self, 
+                net=self.net, 
+                )
         else:
             raise ValueError(
-                f"{self.optimizer} is not an available optimizer. Should be one of ['adam', 'adamw', 'sgd']"
+                f"{self.optimizer} is not an available optimizer. Should be one of ['adam', 'adamw', 'sgd', 'deepEns']"
             )
 
         # Initialize learning rate scheduler
@@ -444,6 +535,7 @@ class ClassificationModel(pl.LightningModule):
             )
         elif self.scheduler == "none":
             scheduler = LambdaLR(optimizer, lambda _: 1)
+            
         else:
             raise ValueError(
                 f"{self.scheduler} is not an available optimizer. Should be one of ['cosine', 'none']"
